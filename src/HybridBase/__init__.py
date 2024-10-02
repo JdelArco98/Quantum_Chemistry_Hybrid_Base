@@ -3,9 +3,7 @@ import warnings
 
 from tequila import TequilaWarning
 from .QuantumChemistryHybridBase import QuantumChemistryHybridBase
-from tequila.quantumchemistry.chemistry_tools import ParametersQC, NBodyTensor
-# from .madness_interface import QuantumChemistryMadness
-
+from tequila.quantumchemistry.chemistry_tools import ParametersQC
 
 SUPPORTED_QCHEMISTRY_BACKENDS = ["base", "pyscf"] # , "psi4", "madness"
 INSTALLED_QCHEMISTRY_BACKENDS = {"base": QuantumChemistryHybridBase} #"madness": QuantumChemistryMadness

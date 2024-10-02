@@ -45,9 +45,9 @@ class FermionicGateImpl(gates.QubitExcitationImpl):
         if not hasattr(indices[0],"__len__"):
             indices = [(indices[2 * i], indices[2 * i + 1]) for i in range(len(indices) // 2)]
         for pair in indices:
-            if self.select is None or self.select[pair[0] // 2] == "F" or (self.select[pair[0] // 2] == "B" and not pair[0] % 2):
+            if self.select is None or self.select[pair[0] // 2] == "F" or (self.select[pair[0] // 2] == "B" and not pair[0] % 2) or self.two_qubit:
                 lfrom.append(self.pos[pair[0]])
-            if self.select is None or self.select[pair[1] // 2] == "F" or (self.select[pair[1] // 2] == "B" and not pair[1] % 2):
+            if self.select is None or self.select[pair[1] // 2] == "F" or (self.select[pair[1] // 2] == "B" and not pair[1] % 2) or self.two_qubit:
                 lto.append(self.pos[pair[1]])
         Upair = QCircuit()
         for i in range(len(lfrom) - 1):
@@ -67,7 +67,7 @@ class FermionicGateImpl(gates.QubitExcitationImpl):
         orbs = []
         for o in range(len(idx) // 2):
             orbs += [*range(idx[2 * o] + 1, idx[2 * o + 1])]
-        orbs = [i for i in orbs if i in self.FER_SO]
+        orbs = [self.pos[i] for i in orbs if self.select[i//2]=="F"]
         if len(orbs):
             for o in range(len(orbs) - 1):
                 Uladder += gates.CNOT(orbs[o], orbs[o + 1])

@@ -1,28 +1,24 @@
-import copy
 import warnings
-from dataclasses import dataclass
 from tequila import TequilaException, BitString, TequilaWarning
 from tequila.hamiltonian import QubitHamiltonian
-from tequila import Molecule
-from tequila.hamiltonian.paulis import Sp, Sm, Zero,I
+from tequila.hamiltonian.paulis import  Zero
 
 from tequila.circuit import QCircuit, gates
 from tequila.objective.objective import Variable, Variables, ExpectationValue
 
 from tequila.simulators.simulator_api import simulate
 from tequila.utils import to_float
-from tequila.quantumchemistry.chemistry_tools import ActiveSpaceData, FermionicGateImpl, prepare_product_state, ClosedShellAmplitudes, \
-    Amplitudes, ParametersQC, NBodyTensor, IntegralManager
+from tequila.quantumchemistry.chemistry_tools import FermionicGateImpl, prepare_product_state, \
+    ParametersQC, NBodyTensor
 from tequila.quantumchemistry import optimize_orbitals
 from tequila.quantumchemistry.qc_base import QuantumChemistryBase as qc_base
 import typing, numpy, numbers
 from itertools import product
 from .encodings import known_encodings
 from .FermionicGateImpl import FermionicGateImpl
-import pyscf
 from openfermion import FermionOperator
 import sys
-class QuantumChemistryHybridBase(qc_base): #Should I heredate the QuantumChemistryBase? or something with the quantumchemistry.__init__()
+class QuantumChemistryHybridBase(qc_base):
     bos_mo = []
     fer_mo = []
     fer_so = []
@@ -124,8 +120,7 @@ class QuantumChemistryHybridBase(qc_base): #Should I heredate the QuantumChemist
             elif (len(select) > n_orb):
                 select = select[:n_orb]
             else:
-                while (len(select) < n_orb):
-                    select += "B"
+                select = select+ (n_orb-len(select))*"B"
             for i in range(len(select)):
                 if select[i] in ["F","B"]:
                     sel.update({i: select[i]})
@@ -139,14 +134,14 @@ class QuantumChemistryHybridBase(qc_base): #Should I heredate the QuantumChemist
             :return : corrected selection dict
             """
             sel = {}
-            for i in select:
-                if i<n_orb:
+            for i in range(n_orb):
+                if i in [*select.keys()]:
                     sel.update({i:select[i]})
-            for o in range(n_orb):
-                if o not in select.keys():
-                    select.update({o: "B"})
-                elif select[o] not in ["F","B"]:
-                    TequilaException("Warning, encoding character not recognised on entry {it}.\n Please choose between F (Fermionic) and B (Bosonic).".format(it={o:select[o]}))
+                else:
+                    sel.update({i:'B'})
+            for i in range(n_orb):
+                if not sel[i] in ["F","B"]:
+                    raise TequilaException("Warning, encoding character not recognised on entry {it}.\n Please choose between F (Fermionic) and B (Bosonic).".format(it={i:sel[i]}))
             return sel
         def verify_selection_list(select:typing.Union[list,tuple],n_orb:int)->dict:
             """
@@ -161,8 +156,7 @@ class QuantumChemistryHybridBase(qc_base): #Should I heredate the QuantumChemist
             elif (len(select) > n_orb):
                 select = select[:n_orb]
             else:
-                while (len(select) < n_orb):
-                    select.append("B")
+                select= select + (n_orb-len(select))*["B"]
             for i in range(len(select)):
                 if select[i] in ["F","B"]:
                     sel.update({i: select[i]})
@@ -206,9 +200,9 @@ class QuantumChemistryHybridBase(qc_base): #Should I heredate the QuantumChemist
             try:
                 self.select = verify_selection_list(select=select,n_orb=n_orb)
             except:
-                TequilaException(f"Warning, encoding format not recognised: {type(select)}.\n Please choose either a Str, Dict, List or Tuple.")
+                raise TequilaException(f"Warning, encoding format not recognised: {type(select)}.\n Please choose either a Str, Dict, List or Tuple.")
         self.BOS_MO, self.FER_MO, self.FER_SO= select_to_list(self.select)
-        return self
+
     # Tranformation Related Function
     def _initialize_transformation(self, transformation=None, *args, **kwargs):
         """
@@ -640,28 +634,28 @@ class QuantumChemistryHybridBase(qc_base): #Should I heredate the QuantumChemist
         -------
             Optimized Tequila Hybrid Molecule
         """
-        select = self.select
+        sel = self.select
         if not isinstance(indices[0], typing.Iterable):
             converted = [(indices[2 * i], indices[2 * i + 1]) for i in range(len(indices) // 2)]
             indices = converted
         froml = []
         tol = []
         for op in indices:
-            if self.select[op[0] // 2] == "B":#we dont care of any Fermionic possibility
+            if sel[op[0] // 2] == "B":#we dont care of any Fermionic possibility
                 froml.append(op[0])
-            if self.select[op[1] // 2] == 'B':
-                tol.append(op[0])
+            if sel[op[1] // 2] == 'B':
+                tol.append(op[1])
         for t in froml:
             if t in tol:
                 froml.remove(t)
                 tol.remove(t)
-            if 2*(t//2)+(not t%2) in froml:
+            elif 2*(t//2)+(not t%2) in froml:
                 froml.remove(2*(t//2))
                 froml.remove(2*(t//2)+1)
         for t in tol:
             if 2*(t//2)+(not t%2) in tol:
-                froml.remove(2*(t//2))
-                froml.remove(2*(t//2)+1)
+                tol.remove(2*(t//2))
+                tol.remove(2*(t//2)+1)
         if (len(froml) or len(tol)):
             if (warning):
                 raise TequilaException("Excitations not allowed for BOSONIC restrictions")
@@ -690,7 +684,7 @@ class QuantumChemistryHybridBase(qc_base): #Should I heredate the QuantumChemist
                 Will reduce potential gradient costs by a factor of 2
         """
         i, j = self.format_excitation_indices([(i, j)])[0]
-        if not (self.select[i] == "J" and self.select[j] == "J"):
+        if not (self.select[i] == "F" and self.select[j] == "F"):
             raise TequilaException("Rotation not allowed, try Correlator")
         if angle is None:
             if label is None:
@@ -784,7 +778,7 @@ class QuantumChemistryHybridBase(qc_base): #Should I heredate the QuantumChemist
             return QCircuit.wrap_gate(
                 FermionicGateImpl(angle=angle, generator=generator, p0=p0,
                                   transformation=type(self.transformation).__name__.lower(), indices=indices,
-                                  select=self.select, condense=self.condense, up_then_down=self.up_then_down,
+                                  select=self.select, condense=self.condense, up_then_down=self.up_then_down,two_qubit=self.two_qubit,
                                   assume_real=assume_real, opt=opt, control=control, **kwargs))
 
     def make_excitation_generator(self, indices: typing.Iterable[typing.Tuple[int, int]], form: str = None, remove_constant_term: bool = True) -> QubitHamiltonian:
@@ -970,7 +964,6 @@ class QuantumChemistryHybridBase(qc_base): #Should I heredate the QuantumChemist
         if edges is None:
             raise TequilaException(
                 "SPA ansatz within a standard orbital basis needs edges. Please provide with the keyword edges.\nExample: edges=[(0,1,2),(3,4)] would correspond to two edges created from orbitals (0,1,2) and (3,4), note that orbitals can only be assigned to a single edge")
-        hcb = len(self.BOS_MO)
         # sanity checks
         # current SPA implementation needs even number of electrons
         if self.n_electrons % 2 != 0:
@@ -999,32 +992,31 @@ class QuantumChemistryHybridBase(qc_base): #Should I heredate the QuantumChemist
                 have_hcb_to_me = self.hcb_to_me() is not None
             except:
                 have_hcb_to_me = False
-            if have_hcb_to_me:
+            if have_hcb_to_me or not len(self.FER_SO):
                 optimize = True
             else:
                 optimize = False
-
+        pos = self.transformation.pos
         U = QCircuit()
-
         # construction of the optimized circuit
         if optimize:
             for edge in edges:
-                U += gates.X(2 * edge[0])
-                previous = edge[0]
+                U += gates.X(2 * pos[edge[0]])
+                previous = pos[edge[0]]
                 if len(edge) == 1:
                     continue
                 for orbital in edge[1:]:
-                    c = previous
+                    c = pos[previous]
                     if not ladder:
                         c = edge[0]
                     angle = Variable(name=((c, orbital), "D", label))
                     if use_units_of_pi:
                         angle = angle * numpy.pi
                     if previous == edge[0]:
-                        U += gates.Ry(angle=angle, target=2 * orbital, control=None)
+                        U += gates.Ry(angle=angle, target=pos[2 * orbital], control=None)
                     else:
-                        U += gates.Ry(angle=angle, target=2 * orbital, control=2 * c)
-                    U += gates.CNOT(2 * orbital, 2 * c)
+                        U += gates.Ry(angle=angle, target=pos[2 * orbital], control=pos[2 * c])
+                    U += gates.CNOT(pos[2 * orbital], pos[2 * c])
                     previous = orbital
 
             U += self.transformation.hcb_to_me()
@@ -1056,8 +1048,7 @@ class QuantumChemistryHybridBase(qc_base): #Should I heredate the QuantumChemist
                         angle = Variable(name=((c, orbital), "D", label))
                         if use_units_of_pi:
                             angle = angle * numpy.pi
-                        U += self.make_excitation_gate(indices=[(2 * c, 2 * orbital), (2 * c + 1, 2 * orbital + 1)],
-                                                       angle=angle)
+                        U += self.make_excitation_gate(indices=[(2 * c, 2 * orbital), (2 * c + 1, 2 * orbital + 1)],angle=angle)
                         previous = orbital
         return U
 

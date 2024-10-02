@@ -45,6 +45,7 @@ class JordanWigner(EB):
             kwargs.pop("two_qubit")
         else:
             self.two_qubit = False
+        if self.two_qubit : self.condense = False
         super().__init__(n_electrons, n_orbitals, up_then_down)
         self.FER_SO,self.pos=self.select_to_list()
 
@@ -63,9 +64,9 @@ class JordanWigner(EB):
             if (sel[i]=="B"):
                 pos.update({2*i:2*i-hcb*self.condense})
                 if self.two_qubit:
-                    pos.update({2*i+1:2*i+self.n_orbitals})
-                    FER_SO.append(i)
-                    FER_SO.append(i+self.n_orbitals*self.up_then_down+(not self.up_then_down)) #i + n_orb (if upthendown) + 1(else), cant be condense bcs two_qubits
+                    pos.update({2*i+1:2*i+self.n_orbitals*self.up_then_down+(not self.up_then_down)})
+                    FER_SO.append(2*i)
+                    FER_SO.append(2*i+self.n_orbitals*self.up_then_down+(not self.up_then_down)) #i + n_orb (if upthendown) + 1(else), cant be condense bcs two_qubits
                 elif self.condense:
                     hcb += 1
             else:
@@ -99,7 +100,7 @@ class JordanWigner(EB):
             :param i: number of the SO in full-Fermionic-not-upthendown over the creation operators acts
             :return :creation operator acting on the corresponding qubits
             """
-            d = self.pos #shoter
+            d = self.pos
             a = Sm(d[i])
             if self.select[i//2]=="F" or self.two_qubit:
                 for n in self.FER_SO[:self.FER_SO.index(d[i])]:
@@ -112,7 +113,7 @@ class JordanWigner(EB):
             :param i: number of the SO in full-Fermionic-not-upthendown over the creation operators acts
             :return :annihilation operator acting on the corresponding qubits
             """
-            d = self.pos  # shoter
+            d = self.pos
             a = Sp(d[i])
             if self.select[i//2] == "F" or self.two_qubit:
                 for n in self.FER_SO[:self.FER_SO.index(d[i])]:
@@ -128,7 +129,6 @@ class JordanWigner(EB):
             index = pair[0]
             temp = pair[1]
             for term in index:
-                # print(lista,"--->",index,'-->',term)
                 if self.select[term[0]//2]=="B" and term[0]%2 and not self.two_qubit:
                     pass
                 else:
@@ -149,7 +149,7 @@ class JordanWigner(EB):
         U = QCircuit()
         for i in range(self.n_orbitals):
             if all or self.two_qubit or self.select[i]=='F':
-                U += X(target=self.down(i), control=self.up(i))
+                U += X(target=self.pos[2*i+1], control=self.pos[2*i])
         return U
 
     def me_to_jw(self) -> QCircuit:
