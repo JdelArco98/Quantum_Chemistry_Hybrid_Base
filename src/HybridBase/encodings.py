@@ -61,7 +61,7 @@ class JordanWigner(EB):
         pos = {}
         for i in sel:
             if (sel[i]=="B"):
-                pos.update({2*i:2*i-hcb})
+                pos.update({2*i:2*i-hcb*self.condense})
                 if self.two_qubit:
                     pos.update({2*i+1:2*i+self.n_orbitals})
                     FER_SO.append(i)
@@ -118,29 +118,6 @@ class JordanWigner(EB):
                 for n in self.FER_SO[:self.FER_SO.index(d[i])]:
                     a *= Z(n)
             return a
-        # def validate_term(term:tuple)->bool:
-        #     froml = []
-        #     tol = []
-        #     for op in term:
-        #         if op[1]: tol.append(op[0])
-        #         else: froml.append(op[0])
-        #     for t in froml:
-        #         if self.select[t//2]=="F":
-        #             froml.remove(t)
-        #     for t in tol:
-        #         if self.select[t//2]=="F":
-        #             tol.remove(t)
-        #     for i in froml:
-        #         if self.select[i//2]=="B":
-        #             if 2*(i//2)+(not i%2) in froml:
-        #                 froml.remove(2*(i//2))
-        #                 froml.remove(2 * (i // 2) + 1)
-        #     for i in tol:
-        #         if self.select[i//2]=="B":
-        #             if 2*(i//2)+(not i%2) in tol:
-        #                 froml.remove(2*(i//2))
-        #                 froml.remove(2 * (i // 2) + 1)
-        #     return not (len(froml) or len(froml))
 
         qop = QubitHamiltonian()
         if type(fermion_operator) is openfermion.FermionOperator:
@@ -165,13 +142,14 @@ class JordanWigner(EB):
     def hcb_to_me(self, *args, **kwargs):
         if "all" in kwargs:
             all = kwargs["all"]
+            kwargs.pop("all")
         else: all = False
-        if all and self.two_qubit:
-            TequilaException("hcb_to me asked for all orbitals in condensed encoding")
+        if all and self.condense:
+            raise TequilaException("hcb_to me asked for all orbitals in condensed encoding")
         U = QCircuit()
         for i in range(self.n_orbitals):
-            if self.select[i]=='F' or all:
-                U += X(target=self.pos[2*i], control=self.pos[2*i+1])
+            if all or self.two_qubit or self.select[i]=='F':
+                U += X(target=self.down(i), control=self.up(i))
         return U
 
     def me_to_jw(self) -> QCircuit:
@@ -183,7 +161,20 @@ class JordanWigner(EB):
     def map_state(self, state: list, *args, **kwargs):
         state = state + [0] * (self.n_orbitals - len(state)-[*self.select.values()].count("B")*self.condense)
         result = [0] * len(state)
+        for i in range(len(state)//2):
+            if self.select[i] == 'B':
+                if self.two_qubit: pass
+                else: state[2*i+1] = 0
         if self.up_then_down:
-            return [state[2 * i] for i in range(self.n_orbitals)] + [state[2 * i + 1] for i in range(self.n_orbitals)]
+            up = [state[2 * i] for i in range(self.n_orbitals)]
+            down = [state[2 * i + 1] for i in range(self.n_orbitals)]
+            if self.condense:
+                for i in self.select:
+                    if self.select[i]=='B': down.pop(i)
+            return up + down
+        elif self.condense:
+            for i in [*self.select.keys()][::-1]:
+                if self.select[i] == 'B': state.pop(2*i+1)
+            return state
         else:
             return state

@@ -120,7 +120,7 @@ class QuantumChemistryPySCF(QuantumChemistryHybridBase):
             """
             sel = {}
             for i in select:
-                if select[i]< n_orb:
+                if i< n_orb:
                     sel.update({i:select[i]})
             for o in range(n_orb):
                 if o not in select.keys():
