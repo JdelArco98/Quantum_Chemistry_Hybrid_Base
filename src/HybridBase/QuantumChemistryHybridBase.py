@@ -12,12 +12,13 @@ from tequila.quantumchemistry.chemistry_tools import FermionicGateImpl, prepare_
     ParametersQC, NBodyTensor
 from tequila.quantumchemistry import optimize_orbitals
 from tequila.quantumchemistry.qc_base import QuantumChemistryBase as qc_base
-import typing, numpy, numbers
+import typing, numpy
 from itertools import product
 from .encodings import known_encodings
 from .FermionicGateImpl import FermionicGateImpl
 from openfermion import FermionOperator
 import sys
+import copy
 class QuantumChemistryHybridBase(qc_base):
     bos_mo = []
     fer_mo = []
@@ -125,7 +126,7 @@ class QuantumChemistryHybridBase(qc_base):
                 if select[i] in ["F","B"]:
                     sel.update({i: select[i]})
                 else:
-                    TequilaException(f"Warning, encoding character not recognised on position {i}: {select[i]}.\n Please choose between F (Fermionic) and B (Bosonic).")
+                    raise TequilaException(f"Warning, encoding character not recognised on position {i}: {select[i]}.\n Please choose between F (Fermionic) and B (Bosonic).")
             return sel
         def verify_selection_dict(select:dict,n_orb:int)->dict:
             """
@@ -203,6 +204,25 @@ class QuantumChemistryHybridBase(qc_base):
                 raise TequilaException(f"Warning, encoding format not recognised: {type(select)}.\n Please choose either a Str, Dict, List or Tuple.")
         self.BOS_MO, self.FER_MO, self.FER_SO= select_to_list(self.select)
 
+    def use_native_orbitals(self, inplace=False):
+        """
+        Returns
+        -------
+        New molecule in the native (orthonormalized) basis given
+        e.g. for standard basis sets the orbitals are orthonormalized Gaussian Basis Functions
+        """
+        if not self.integral_manager.active_space_is_trivial():
+            warnings.warn("orthonormalize_basis_orbitals: active space is set and might lead to inconsistent behaviour", TequilaWarning)
+
+        # can not be an instance of a specific backend (otherwise we get inconsistencies with classical methods in the backend)
+        if inplace:
+            self.integral_manager.transform_to_native_orbitals()
+            return self
+        else:
+            integral_manager = copy.deepcopy(self.integral_manager)
+            integral_manager.transform_to_native_orbitals()
+            result = QuantumChemistryHybridBase(parameters=self.parameters, integral_manager=integral_manager, transformation=self.transformation,select=self.select,two_qubit=self.two_qubit,condense=self.condense,integral_tresh=self.integral_tresh)
+            return result
     # Tranformation Related Function
     def _initialize_transformation(self, transformation=None, *args, **kwargs):
         """
@@ -303,19 +323,21 @@ class QuantumChemistryHybridBase(qc_base):
                         if (k % 2) != (l % 2):  # hhjj
                             if not self.two_qubit:
                                 H_INT.append((((2*j,1),(l,0),(k,0)),((l % 2) - (k % 2)) * 0.5 * h2[j][j][l // 2][k // 2]))
-                            else: H_INT.append((((2*j+k%2,1),(2*j+l%2,1),(l,0),(k,0)),0.5 * h2[j][j][l // 2][k // 2]))
+                            else:
+                                H_INT.append((((2*j+k%2,1),(2*j+l%2,1),(l,0),(k,0)),0.5 * h2[j][j][l // 2][k // 2]))
                         if (k % 2) != (l % 2):  # jjhh
                             if not self.two_qubit:
                                 H_INT.append((((l,1),(k,1),(2*j,0)),((k % 2) - (l % 2)) * 0.5 * h2[l // 2][k // 2][j][j]))
-                            else: H_INT.append((((l,1),(k,1),(2*j+k%2,0),(2*j+l%2,0)),0.5 * h2[l // 2][k // 2][j][j]))
+                            else:
+                                H_INT.append((((l,1),(k,1),(2*j+k%2,0),(2*j+l%2,0)),0.5 * h2[l // 2][k // 2][j][j]))
                         if ((k % 2) == (l % 2)):
                             if not self.two_qubit:
                                 e2 = 2 * h2[k // 2][j][j][l // 2] + 2 * h2[j][k // 2][l // 2][j] - h2[k // 2][j][l // 2][j] - h2[j][k // 2][j][l // 2]
                                 H_INT.append((((2*j,1),(2*j,0),(k,1),(l,0)),0.5 * e2))
                             else:
                                 e2 = h2[j][k // 2][l // 2][j]+h2[k // 2][j][j][l // 2]
-                                H_INT.append((((j*2,1),(j*2,0),(k,1),(l,0)),e2))
-                                H_INT.append((((j*2+1,1),(j*2+1,0),(k,1),(l,0)),e2))
+                                H_INT.append((((j*2,1),(j*2,0),(k,1),(l,0)),0.5*e2))
+                                H_INT.append((((j*2+1,1),(j*2+1,0),(k,1),(l,0)),0.5*e2))
                                 H_INT.append((((k,1),(l,0),(j*2+k%2,1),(j*2+k%2,0)),-0.5*(h2[k // 2][j][l // 2][j]+h2[j][k // 2][j][l // 2])))
 
             return self.transformation(H_INT)
@@ -387,9 +409,17 @@ class QuantumChemistryHybridBase(qc_base):
                         opa = self.transformation(op_tuple)
                         op += opa + opa.dagger()
                     elif (p == q and self.select[p] == "B"):
-                        op_tuple = [(((2 * p, 1), (2 * q, 0)),1)]
-                        op = self.transformation(op_tuple)
-                        op += op.dagger()
+                        if not self.two_qubit:
+                            op_tuple = [(((2 * p, 1), (2 * q, 0)),1)]
+                            op = self.transformation(op_tuple)
+                            op += op.dagger()
+                        else:
+                            op_tuple = [(((2 * p, 1), (2 * p, 0)), 0.5)]
+                            op = self.transformation(op_tuple)
+                            op += op.dagger()
+                            op_tuple = [(((2 * p + 1, 1), (2 * p + 1, 0)), 0.5)]
+                            opa = self.transformation(op_tuple)
+                            op += opa + opa.dagger()
                     else:
                         op = Zero()
                     ops += [op]
@@ -436,62 +466,130 @@ class QuantumChemistryHybridBase(qc_base):
                         op += opa + opa.dagger()
                         ops += [op]
                     elif (case == 2):  # case HHHH
-                        # Spin aaaa+ bbbb dont allow p=q=r=s  orb ijji
-                        op_tuple = [(((2 * p, 1), (2 * q, 1), (2 * q, 0), (2 * p, 0)),1)] if (p != q and r != s and p == s and q == r) else [((),0)]
-                        opa = self.transformation(op_tuple)
-                        op = opa + opa.dagger()
-                        # Spin abba+ baab allow p=q=r=s orb iijj
-                        op_tuple = [(((2 * p, 1), (2 * s, 0)),1)] if (p == q and s == r) else [((),0)]
-                        opa = self.transformation(op_tuple)
-                        op += opa + opa.dagger()
-                        # Spin abba+ baab dont allow p=q=r=s orb ijij
-                        op_tuple = [(((2 * p, 1), (2 * q, 1), (2 * r, 0), (2 * s, 0)),1)] if (p != q and r != s and p == r and s == q) else [((),0)]
-                        opa = self.transformation(op_tuple)
-                        op += opa + opa.dagger()
+                        if not self.two_qubit:
+                            # Spin aaaa+bbbb dont allow p=q=r=s bcs self-interaction orb ijji
+                            op_tuple = [(((2 * p, 1), (2 * q, 1), (2 * q, 0), (2 * p, 0)),-1)] if (p != q and p == s and q == r) else [((),0)]
+                            opa = self.transformation(op_tuple)
+                            op = opa + opa.dagger()
+                            # Spin abba+ baab allow p=q=r=s orb iijj
+                            op_tuple = [(((2 * p, 1), (2 * s, 0)),1)] if (p == q and s == r) else [((),0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa + opa.dagger()
+                            # Spin abba+ baab dont allow p=q=r=s orb ijij
+                            op_tuple = [(((2 * p, 1), (2 * q, 1), (2 * p, 0), (2 * q, 0)),2)] if (p != q and p == r and s == q) else [((),0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa + opa.dagger()
+                        else:
+                            # Spin aaaa+ bbbb dont allow p=q=r=s  orb ijji
+                            op_tuple = [(((2 * p, 1), (2 * q, 1), (2 * q, 0), (2 * p, 0)), -0.5)] if (p != q and r != s and p == s and q == r) else [((),0)]
+                            opa = self.transformation(op_tuple)
+                            op = opa + opa.dagger()
+                            op_tuple = [(((2 * p + 1, 1), (2 * q + 1, 1), (2 * q + 1, 0), (2 * p + 1, 0)), -0.5)] if (p != q and r != s and p == s and q == r) else [((),0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa + opa.dagger()
+                            # Spin abba+ baab allow p=q=r=s orb iijj
+                            sign = numpy.sign(p-s)
+                            if not sign: sign = 1
+                            op_tuple = [(((2 * p, 1),(2 * p + 1, 1),(2 * s + 1, 0), (2 * s, 0)), sign*1)] if (p == q and s == r) else [((), 0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa + opa.dagger()
+                            # Spin aaaa+ bbbb dont allow p=q=r=s orb ijij
+                            sign = numpy.sign(q - p)
+                            if not sign: sign = 1
+                            op_tuple = [(((2 * p + 1, 1), (2 * q, 1), (2 * p, 0), (2 * q + 1 , 0)), 2*sign)] if (p != q and p == r and s == q) else [((), 0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa + opa.dagger()
+                            op_tuple = [(((2 * p + 1, 1), (2 * q + 1, 1), (2 * p + 1 , 0), (2 * q + 1, 0)), 2*sign)] if (p != q and p == r and s == q) else [((), 0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa + opa.dagger()
                         ops += [op]
                     elif (case == 3):  # case HJJH+JHHJ+HJHJ+JHJH+HHJJ+JJHH
-                        # uddu+duud hhjj
-                        op_tuple = [(((2 * p, 1), (2 * r + 1, 0), (2 * s, 0)),0.5)] if (p == q and self.select[p] == "B") else [((),0)]
-                        opa = self.transformation(op_tuple)
-                        op = opa + opa.dagger()
-                        op_tuple = [(((2 * p, 1), (2 * r, 0), (2 * s + 1, 0)),-0.5)] if (p == q and self.select[p] == "B") else [((),0)] #-0.5 bcs sign(2r,2s+1)
-                        opa = self.transformation(op_tuple)
-                        op += opa + opa.dagger()
-                        # uddu+duud jjhh
-                        op_tuple = [(((2 * p, 1), (2 * q + 1, 1), (2 * r, 0)),0.5)] if r == s and self.select[r] == "B" else [((),0)]
-                        opa = self.transformation(op_tuple)
-                        op += opa +  opa.dagger()
-                        op_tuple = [(((2 * p + 1, 1), (2 * q, 1), (2 * r, 0)),-0.5)] if r == s and self.select[r] == "B" else [((),0)] #-0.5 bcs sign(2r,2s+1)
-                        opa = self.transformation(op_tuple)
-                        op += opa +  opa.dagger()
-                        # uddu+duud hjjh
-                        op_tuple = [(((2 * p, 1), (2 * q, 1), (2 * r, 0), (2 * p, 0)),-.5)] if (p == s and self.select[p] == "B") else [((),0)]
-                        opa = self.transformation(op_tuple)
-                        op += opa +  opa.dagger()
-                        op_tuple = [(((2 * p, 1), (2 * q + 1, 1), (2 * r + 1, 0), (2 * p, 0)),-.5)] if (p == s and self.select[p] == "B") else [((),0)]
-                        opa = self.transformation(op_tuple)
-                        op += opa +  opa.dagger()
-                        # uddu+duud jhhj
-                        op_tuple = [(((2 * p, 1), (2 * q, 1), (2 * q, 0), (2 * s, 0)),-.5)] if (r == q and self.select[r] == "B") else [((),0)]
-                        opa = self.transformation(op_tuple)
-                        op += opa +  opa.dagger()
-                        op_tuple = [(((2 * p + 1, 1), (2 * q, 1), (2 * q, 0), (2 * s + 1, 0)),-.5)] if (r == q and self.select[r] == "B") else [((),0)]
-                        opa = self.transformation(op_tuple)
-                        op += opa +  opa.dagger()
-                        # dddd+uuuu hjhj
-                        op_tuple = [(((2 * p, 1), (2 * q, 1), (2 * p, 0), (2 * s, 0)),1)] if p == r and self.select[p] == "B" else [((),0)]
-                        opa = self.transformation(op_tuple)
-                        op += opa +  opa.dagger()
-                        op_tuple = [(((2 * p, 1), (2 * q + 1, 1), (2 * p, 0), (2 * s + 1, 0)),1)] if p == r and self.select[p] == "B" else [((),0)]
-                        opa = self.transformation(op_tuple)
-                        op += opa +  opa.dagger()
-                        # dddd+uuuu jhjh
-                        op_tuple = [(((2 * p, 1), (2 * q, 1), (2 * r, 0), (2 * q, 0)),1)] if (s == q and self.select[s] == "B") else [((),0)]
-                        opa = self.transformation(op_tuple)
-                        op += opa +  opa.dagger()
-                        op_tuple = [(((2 * p + 1, 1), (2 * q, 1), (2 * r + 1, 0), (2 * q, 0)),1)] if (s == q and self.select[s] == "B") else [((),0)]
-                        opa = self.transformation(op_tuple)
-                        op += opa +  opa.dagger()
+                        if not self.two_qubit:
+                            # uddu+duud hhjj
+                            op_tuple = [(((2 * p, 1), (2 * r + 1, 0), (2 * s, 0)),0.5)] if (p == q and self.select[p] == "B") else [((),0)]
+                            opa = self.transformation(op_tuple)
+                            op = opa + opa.dagger()
+                            op_tuple = [(((2 * p, 1), (2 * r, 0), (2 * s + 1, 0)),-0.5)] if (p == q and self.select[p] == "B") else [((),0)] #-0.5 bcs sign(2r,2s+1)
+                            opa = self.transformation(op_tuple)
+                            op += opa + opa.dagger()
+                            # uddu+duud jjhh
+                            op_tuple = [(((2 * p, 1), (2 * q + 1, 1), (2 * r, 0)),0.5)] if r == s and self.select[r] == "B" else [((),0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa +  opa.dagger()
+                            op_tuple = [(((2 * p + 1, 1), (2 * q, 1), (2 * r, 0)),-0.5)] if r == s and self.select[r] == "B" else [((),0)] #-0.5 bcs sign(2r,2s+1)
+                            opa = self.transformation(op_tuple)
+                            op += opa +  opa.dagger()
+                            # uddu+duud+uuuu+dddd hjjh
+                            op_tuple = [(((2 * p, 1), (2 * q, 1), (2 * r, 0), (2 * p, 0)),-0.5)] if (p == s and self.select[p] == "B") else [((),0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa +  opa.dagger()
+                            op_tuple = [(((2 * p, 1), (2 * q + 1, 1), (2 * r + 1, 0), (2 * p, 0)),-0.5)] if (p == s and self.select[p] == "B") else [((),0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa +  opa.dagger()
+                            # uddu+duud+uuuu+dddd jhhj
+                            op_tuple = [(((2 * p, 1), (2 * q, 1), (2 * q, 0), (2 * s, 0)),-0.5)] if (r == q and self.select[r] == "B") else [((),0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa +  opa.dagger()
+                            op_tuple = [(((2 * p + 1, 1), (2 * q, 1), (2 * q, 0), (2 * s + 1, 0)),-0.5)] if (r == q and self.select[r] == "B") else [((),0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa +  opa.dagger()
+                            # dddd+uuuu hjhj
+                            op_tuple = [(((2 * p, 1), (2 * q, 1), (2 * p, 0), (2 * s, 0)),1)] if p == r and self.select[p] == "B" else [((),0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa +  opa.dagger()
+                            op_tuple = [(((2 * p, 1), (2 * q + 1, 1), (2 * p, 0), (2 * s + 1, 0)),1)] if p == r and self.select[p] == "B" else [((),0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa +  opa.dagger()
+                            # dddd+uuuu jhjh
+                            op_tuple = [(((2 * p, 1), (2 * q, 1), (2 * r, 0), (2 * q, 0)),1)] if (s == q and self.select[s] == "B") else [((),0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa +  opa.dagger()
+                            op_tuple = [(((2 * p + 1, 1), (2 * q, 1), (2 * r + 1, 0), (2 * q, 0)),1)] if (s == q and self.select[s] == "B") else [((),0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa +  opa.dagger()
+                        else:
+                            # uddu+duud hhjj
+                            op_tuple = [(((2 * p, 1),(2 * p + 1, 1), (2 * r + 1, 0), (2 * s, 0)), 0.5)] if (p == q and self.select[p] == "B") else [((), 0)]
+                            opa = self.transformation(op_tuple)
+                            op = opa + opa.dagger()
+                            op_tuple = [(((2 * p + 1, 1),(2 * p, 1), (2 * r, 0), (2 * s + 1, 0)), 0.5)] if (p == q and self.select[p] == "B") else [((), 0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa + opa.dagger()
+                            # uddu+duud jjhh
+                            op_tuple = [(((2 * p, 1), (2 * q + 1, 1),(2 * r + 1, 0) ,(2 * r, 0)), 0.5)] if r == s and self.select[r] == "B" else [((), 0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa + opa.dagger()
+                            op_tuple = [(((2 * p + 1, 1), (2 * q, 1), (2 * r, 0), (2 * r + 1, 0)), 0.5)] if r == s and self.select[r] == "B" else [((), 0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa + opa.dagger()
+                            # uddu+duud+uuuu+dddd hjjh
+                            op_tuple = [(((2 * p + 1, 1), (2 * q, 1), (2 * r, 0), (2 * p + 1, 0)), -.5)] if (p == s and self.select[p] == "B") else [((), 0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa + opa.dagger()
+                            op_tuple = [(((2 * p, 1), (2 * q + 1, 1), (2 * r + 1, 0), (2 * p, 0)), -.5)] if (p == s and self.select[p] == "B") else [((), 0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa + opa.dagger()
+                            # uddu+duud+uuuu+dddd jhhj
+                            op_tuple = [(((2 * p, 1), (2 * q + 1, 1), (2 * q + 1, 0), (2 * s, 0)), -0.5)] if (r == q and self.select[r] == "B") else [((), 0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa + opa.dagger()
+                            op_tuple = [(((2 * p + 1, 1), (2 * q, 1), (2 * q, 0), (2 * s + 1, 0)), -0.5)] if (r == q and self.select[r] == "B") else [((), 0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa + opa.dagger()
+                            # dddd+uuuu hjhj
+                            op_tuple = [(((2 * p, 1), (2 * q, 1), (2 * p, 0), (2 * s, 0)), -1)] if p == r and self.select[p] == "B" else [((), 0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa + opa.dagger()
+                            op_tuple = [(((2 * p + 1, 1), (2 * q + 1, 1), (2 * p + 1, 0), (2 * s + 1, 0)), -1)] if p == r and self.select[p] == "B" else [((), 0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa + opa.dagger()
+                            # dddd+uuuu jhjh
+                            op_tuple = [(((2 * p, 1), (2 * q, 1), (2 * r, 0), (2 * q, 0)), -1)] if (s == q and self.select[s] == "B") else [((), 0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa + opa.dagger()
+                            op_tuple = [(((2 * p + 1, 1), (2 * q + 1, 1), (2 * r + 1, 0), (2 * q + 1, 0)), -1)] if (s == q and self.select[s] == "B") else [((), 0)]
+                            opa = self.transformation(op_tuple)
+                            op += opa + opa.dagger()
                         ops += [op]
                     else:
                         ops += [Zero()]
@@ -597,14 +695,14 @@ class QuantumChemistryHybridBase(qc_base):
             Optimized Tequila Hybrid Molecule
         """
         from .__init__ import Molecule
+        hybrid = hasattr(molecule,'select')
         if molecule_arguments is None:
-            if self.up_then_down:
-                transformation = "reoredered-" + self.transformation
-            else: transformation = self.transformation
-            molecule_arguments = {"select": molecule.select, "condense": molecule.condense,
+            if hybrid:
+                molecule_arguments = {"select": molecule.select, "condense": molecule.condense,
                                   "two_qubit": molecule.two_qubit,
                                   "integral_tresh": molecule.integral_tresh,"parameters": molecule.parameters,
-                                  "transformation": transformation,"backend":'pyscf'} #dont knwo how to fix to the actual
+                                  "transformation": molecule.transformation,"backend":'pyscf'}
+            else: molecule_arguments = {"parameters": molecule.parameters,"transformation": molecule.transformation,"backend":'pyscf'}
         if molecule_factory is None:
             result = optimize_orbitals(molecule=molecule, circuit=circuit, vqe_solver=vqe_solver,
                                                            pyscf_arguments=pyscf_arguments, silent=silent,
@@ -907,6 +1005,17 @@ class QuantumChemistryHybridBase(qc_base):
             U.n_qubits = len(self.FER_SO) + len(self.BOS_MO)   # adapt when tapered transformations work
         return U
 
+    def prepare_hardcore_boson_reference(self):
+        """
+        Prepare reference state in the Hardcore-Boson approximation (eqch qubit represents two spin-paired electrons)
+        Returns
+        -------
+        tq.QCircuit that prepares the HCB reference
+        """
+        pos = self.transformation.pos
+        U = gates.X(target=[pos[2*i.idx] for i in self.reference_orbitals])
+        U.n_qubits = self.n_orbitals
+        return U
     def make_ansatz(self, name: str, *args, **kwargs):
         """
         Automatically calls the right subroutines to construct ansatze implemented in tequila.chemistry
@@ -1000,37 +1109,44 @@ class QuantumChemistryHybridBase(qc_base):
         U = QCircuit()
         # construction of the optimized circuit
         if optimize:
-            for edge in edges:
-                U += gates.X(2 * pos[edge[0]])
-                previous = pos[edge[0]]
-                if len(edge) == 1:
+            # circuit in HCB representation
+            # depends a bit on the ordering of the spin-orbitals in the encoding
+            # here we transform it to the qubits representing the up-spins
+            # the hcb_to_me sequence will then transfer to the actual encoding later
+            for edge_orbitals in edges:
+                edge_qubits = [pos[2*i] for i in edge_orbitals]
+                U += gates.X(edge_qubits[0])
+                if len(edge_qubits) == 1:
                     continue
-                for orbital in edge[1:]:
-                    c = pos[previous]
+                for i in range(1, len(edge_qubits)):
+                    q1 = edge_qubits[i]
+                    c = edge_qubits[i - 1]
                     if not ladder:
-                        c = edge[0]
-                    angle = Variable(name=((c, orbital), "D", label))
+                        c = edge_qubits[0]
+                    angle = Variable(name=((edge_orbitals[i - 1], edge_orbitals[i]), "D", label))
                     if use_units_of_pi:
                         angle = angle * numpy.pi
-                    if previous == edge[0]:
-                        U += gates.Ry(angle=angle, target=pos[2 * orbital], control=None)
+                    if i - 1 == 0:
+                        U += gates.Ry(angle=angle, target=q1, control=None)
                     else:
-                        U += gates.Ry(angle=angle, target=pos[2 * orbital], control=pos[2 * c])
-                    U += gates.CNOT(pos[2 * orbital], pos[2 * c])
-                    previous = orbital
-
-            U += self.transformation.hcb_to_me()
+                        U += gates.Ry(angle=angle, target=q1, control=c)
+                    U += gates.CNOT(q1, c)
+            if not hcb:
+                U += self.transformation.hcb_to_me()
         else:
             # construction of the non-optimized circuit
-            U = self.prepare_reference()
+            if hcb:
+                U = self.prepare_hardcore_boson_reference()
+            else:
+                U = self.prepare_reference()
             # will only work if the first orbitals in the edges are the reference orbitals
             sane = True
             reference_orbitals = self.reference_orbitals
-            for edge in edges:
-                if self.orbitals[edge[0]] not in reference_orbitals:
+            for edge_qubits in edges:
+                if self.orbitals[edge_qubits[0]] not in reference_orbitals:
                     sane = False
-                if len(edge) > 1:
-                    for orbital in edge[1:]:
+                if len(edge_qubits) > 1:
+                    for orbital in edge_qubits[1:]:
                         if self.orbitals[orbital] in reference_orbitals:
                             sane = False
             if not sane:
@@ -1038,18 +1154,21 @@ class QuantumChemistryHybridBase(qc_base):
                     "Non-Optimized SPA (e.g. with encodings that are not JW) will only work if the first orbitals of all SPA edges are occupied reference orbitals and all others are not. You gave edges={} and reference_orbitals are {}".format(
                         edges, reference_orbitals))
 
-            for edge in edges:
-                previous = edge[0]
-                if len(edge) > 1:
-                    for orbital in edge[1:]:
+            for edge_qubits in edges:
+                previous = edge_qubits[0]
+                if len(edge_qubits) > 1:
+                    for q1 in edge_qubits[1:]:
                         c = previous
                         if not ladder:
-                            c = edge[0]
-                        angle = Variable(name=((c, orbital), "D", label))
+                            c = edge_qubits[0]
+                        angle = Variable(name=((c, q1), "D", label))
                         if use_units_of_pi:
                             angle = angle * numpy.pi
-                        U += self.make_excitation_gate(indices=[(2 * c, 2 * orbital), (2 * c + 1, 2 * orbital + 1)],angle=angle)
-                        previous = orbital
+                        if hcb:
+                            U += self.make_hardcore_boson_excitation_gate(indices=[(q1, c)], angle=angle)
+                        else:
+                            U += self.make_excitation_gate(indices=[(2 * c, 2 * q1), (2 * c + 1, 2 * q1 + 1)],angle=angle)
+                        previous = q1
         return U
 
     def make_upccgsd_ansatz(self, include_reference: bool = True, name: str = "UpCCGSD",label: str = None,order: int = None,
@@ -1106,7 +1225,6 @@ class QuantumChemistryHybridBase(qc_base):
                 order = 1
 
         indices = self.make_upccgsd_indices(key=name)
-
         # check if the used qubit encoding has a hcb transformation
         have_hcb_trafo = self.transformation.hcb_to_me() is not None
 
@@ -1146,13 +1264,11 @@ class QuantumChemistryHybridBase(qc_base):
             if include_reference:
                 U = self.prepare_hardcore_boson_reference()
             if D:
-                U += self.make_hardcore_boson_upccgd_layer(indices=indices, assume_real=assume_real, label=(label, 0),
-                                                           *args, **kwargs)
+                U += self.make_hardcore_boson_upccgd_layer(indices=indices, assume_real=assume_real, label=(label, 0),*args, **kwargs)
             U += self.transformation.hcb_to_me()
             if S:
                 U += self.make_upccgsd_singles(indices=indices, assume_real=assume_real, label=(label, 0),
-                                               spin_adapt_singles=spin_adapt_singles, neglect_z=neglect_z, *args,
-                                               **kwargs)
+                                               spin_adapt_singles=spin_adapt_singles, neglect_z=neglect_z, *args,**kwargs)
 
         for k in range(1, order):
             U += self.make_upccgsd_layer(include_singles=S, include_doubles=D, indices=indices, label=(label, k),
@@ -1184,8 +1300,7 @@ class QuantumChemistryHybridBase(qc_base):
                     P0 = self.make_excitation_generator(indices=target,form="p0")
                     U += gates.GeneralizedRotation(angle=angle,generator=G, p0=P0,assume_real=assume_real, **kwargs)
                 else:
-                    U += self.make_excitation_gate(angle=angle,
-                                                   indices=((2 * idx[0], 2 * idx[1]), (2 * idx[0] + 1, 2 * idx[1] + 1)),
+                    U += self.make_excitation_gate(angle=angle,indices=((2 * idx[0], 2 * idx[1]), (2 * idx[0] + 1, 2 * idx[1] + 1)),
                                                    assume_real=assume_real, **kwargs)
             if include_singles and mix_sd and firts_double:
                 U += self.make_upccgsd_singles(indices=[(idx,)], assume_real=assume_real, label=label,
@@ -1214,8 +1329,8 @@ class QuantumChemistryHybridBase(qc_base):
                     if angle_transform is not None:
                         angle = angle_transform(angle)
                     if neglect_z:
-                        targeta = [self.transformation.up(idx[0]), self.transformation.up(idx[1])]
-                        targetb = [self.transformation.down(idx[0]), self.transformation.down(idx[1])]
+                        targeta = [self.transformation.pos[2*idx[0]], self.transformation.pos[2*idx[1]]]
+                        targetb = [self.transformation.pos[2*idx[0]+1], self.transformation.pos[2*idx[1]+1]]
                         U += gates.QubitExcitation(angle=angle, target=targeta, assume_real=assume_real, **kwargs)
                         U += gates.QubitExcitation(angle=angle, target=targetb, assume_real=assume_real, **kwargs)
                     else:
@@ -1241,3 +1356,35 @@ class QuantumChemistryHybridBase(qc_base):
                                                        assume_real=assume_real, **kwargs)
 
         return U
+    def make_hardcore_boson_excitation_gate(self, indices, angle, control=None, assume_real=True,
+                                            compile_options="optimize"):
+        """
+        Make excitation generator in the hardcore-boson approximation (all electrons are forced to spin-pairs)
+        use only in combination with make_hardcore_boson_hamiltonian()
+
+        Parameters
+        ----------
+        indices
+        angle
+        control
+        assume_real
+        compile_options
+
+        Returns
+        -------
+
+        """
+        target = []
+        for pair in indices:
+            assert len(pair) == 2
+            target += [self.transformation.pos[2*pair[0]], self.transformation.pos[2*pair[1]]]
+        if self.transformation.up_then_down:
+            consistency = [x < self.n_orbitals for x in target]
+        else:
+            consistency = [x % 2 == 0  for x in target]
+        if not all(consistency):
+            raise TequilaException(
+                "make_hardcore_boson_excitation_gate: Inconsistencies in indices={} for encoding: {}".format(indices, self.transformation))
+        return gates.QubitExcitation(angle=angle, target=target, assume_real=assume_real, control=control,compile_options=compile_options)
+    def hcb_to_me(self,**kwargs):
+        return self.transformation.hcb_to_me(**kwargs)

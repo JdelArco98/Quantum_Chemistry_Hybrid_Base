@@ -200,7 +200,7 @@ class FermionicGateImpl(gates.QubitExcitationImpl):
             if (sel[i]=="B"):
                 pos.update({2*i:2*i-hcb*self.condense})
                 if self.two_qubit:
-                    pos.update({2*i+1:2*i+self.n_orbitals})
+                    pos.update({2*i+1:2*i+self.n_orbitals*self.up_then_down+(not self.up_then_down)})
                     FER_SO.append(i)
                     FER_SO.append(i+self.n_orbitals*self.up_then_down+(not self.up_then_down)) #i + n_orb (if upthendown) + 1(else), cant be condense bcs two_qubits
                 elif self.condense:

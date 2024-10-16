@@ -2,16 +2,13 @@
 Collections of Fermion-to-Qubit encodings known to tequila
 Adapted to the encoding
 """
-import abc
 import typing
-
 from tequila import TequilaException
 from tequila.circuit.circuit import QCircuit
 from tequila.circuit.gates import X, CNOT
 from tequila.hamiltonian.paulis import Sp,Sm,Z
 from tequila.hamiltonian.qubit_hamiltonian import QubitHamiltonian
 import openfermion
-import numpy
 from tequila.quantumchemistry.encodings import EncodingBase as EB
 
 def known_encodings():
@@ -64,7 +61,7 @@ class JordanWigner(EB):
             if (sel[i]=="B"):
                 pos.update({2*i:2*i-hcb*self.condense})
                 if self.two_qubit:
-                    pos.update({2*i+1:2*i+self.n_orbitals*self.up_then_down+(not self.up_then_down)})
+                    pos[2*i+1]=2*i+self.n_orbitals*self.up_then_down+(not self.up_then_down)
                     FER_SO.append(2*i)
                     FER_SO.append(2*i+self.n_orbitals*self.up_then_down+(not self.up_then_down)) #i + n_orb (if upthendown) + 1(else), cant be condense bcs two_qubits
                 elif self.condense:
@@ -140,16 +137,33 @@ class JordanWigner(EB):
         return qop
 
     def hcb_to_me(self, *args, **kwargs):
+        '''
+        all: CNOT for all orbs, including FER
+        bos: CNOT only for the Bos orbitals
+        '''
         if "all" in kwargs:
             all = kwargs["all"]
             kwargs.pop("all")
         else: all = False
+        if "bos" in kwargs:
+            bos = kwargs["bos"]
+            kwargs.pop("bos")
+        else: bos = False
+        if bos and all:
+            TequilaException("hcb_to_me called with all and bos both True")
         if all and self.condense:
             raise TequilaException("hcb_to me asked for all orbitals in condensed encoding")
         U = QCircuit()
+        pos = self.pos
+        if not self.two_qubit or bos:
+            for i in range(self.n_orbitals):
+                if self.select[i]=='B':
+                    pos[2*i+1] = 2*i +self.n_orbitals*self.up_then_down+(not self.up_then_down)
         for i in range(self.n_orbitals):
-            if all or self.two_qubit or self.select[i]=='F':
-                U += X(target=self.pos[2*i+1], control=self.pos[2*i])
+            if bos and self.select[i]=='B':
+                U += X(target=pos[2 * i + 1], control=pos[2 * i])
+            if not bos and (all or self.two_qubit or self.select[i]=='F'):
+                U += X(target=pos[2*i+1], control=pos[2*i])
         return U
 
     def me_to_jw(self) -> QCircuit:
@@ -178,3 +192,9 @@ class JordanWigner(EB):
             return state
         else:
             return state
+
+    def up(self,i):
+        return self.pos[2*i]
+
+    def down(self, i):
+        return self.pos[2*i+1]
