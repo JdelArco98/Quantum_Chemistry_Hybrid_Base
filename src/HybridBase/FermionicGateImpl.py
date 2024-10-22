@@ -196,19 +196,21 @@ class FermionicGateImpl(gates.QubitExcitationImpl):
         FER_SO = []
         sel = self.select
         pos = {}
+        up = self.up_then_down
+        two = self.two_qubit
         for i in sel:
-            if (sel[i]=="B"):
-                pos.update({2*i:2*i-hcb*self.condense})
-                if self.two_qubit:
-                    pos.update({2*i+1:2*i+self.n_orbitals*self.up_then_down+(not self.up_then_down)})
-                    FER_SO.append(i)
-                    FER_SO.append(i+self.n_orbitals*self.up_then_down+(not self.up_then_down)) #i + n_orb (if upthendown) + 1(else), cant be condense bcs two_qubits
+            if (sel[i] == "B"):
+                pos[2 * i] = i + (i - hcb) * (not up)
+                if two:
+                    pos[2 * i + 1] = i + self.n_orbitals * up + (not up) * (i + 1)
+                    FER_SO.append(pos[2 * i])
+                    FER_SO.append(pos[2 * i + 1])
                 elif self.condense:
                     hcb += 1
             else:
-                pos.update({2*i:2*i-hcb})
-                pos.update({2*i+1:2*i-hcb+self.up_then_down*self.n_orbitals+(not self.up_then_down)})
-                FER_SO.append(2 * i-hcb)
-                FER_SO.append(2*i-hcb+self.up_then_down*self.n_orbitals+(not self.up_then_down))
+                pos[2 * i] = i + (i - hcb) * (not up)
+                pos[2 * i + 1] = i - hcb + up * self.n_orbitals + (not up) * (i + 1)
+                FER_SO.append(pos[2 * i])
+                FER_SO.append(pos[2 * i + 1])
         FER_SO.sort()
-        return FER_SO,pos
+        return FER_SO, pos

@@ -8,7 +8,7 @@ from tequila.objective.objective import Variable, Variables, ExpectationValue
 
 from tequila.simulators.simulator_api import simulate
 from tequila.utils import to_float
-from tequila.quantumchemistry.chemistry_tools import FermionicGateImpl, prepare_product_state, \
+from tequila.quantumchemistry.chemistry_tools import prepare_product_state, \
     ParametersQC, NBodyTensor
 from tequila.quantumchemistry import optimize_orbitals
 from tequila.quantumchemistry.qc_base import QuantumChemistryBase as qc_base
@@ -629,9 +629,8 @@ class QuantumChemistryHybridBase(qc_base):
         # Build operator lists
         qops = []
         qops += _build_1bdy_operators_mix() if get_rdm1 else []
-        sys.stdout.flush()
         qops += _build_2bdy_operators_mix() if get_rdm2 else []
-        sys.stdout.flush()
+
         # Compute expected values
         evals = simulate(ExpectationValue(H=qops, U=U, shape=[len(qops)]), variables=variables)
         # Split expectation values in 1- and 2-particle expectation values
@@ -1004,7 +1003,6 @@ class QuantumChemistryHybridBase(qc_base):
         else:
             U.n_qubits = len(self.FER_SO) + len(self.BOS_MO)   # adapt when tapered transformations work
         return U
-
     def prepare_hardcore_boson_reference(self):
         """
         Prepare reference state in the Hardcore-Boson approximation (eqch qubit represents two spin-paired electrons)
@@ -1105,7 +1103,7 @@ class QuantumChemistryHybridBase(qc_base):
                 optimize = True
             else:
                 optimize = False
-        pos = self.transformation.pos
+        pos = copy.deepcopy(self.transformation.pos)
         U = QCircuit()
         # construction of the optimized circuit
         if optimize:
@@ -1169,6 +1167,8 @@ class QuantumChemistryHybridBase(qc_base):
                         else:
                             U += self.make_excitation_gate(indices=[(2 * c, 2 * q1), (2 * c + 1, 2 * q1 + 1)],angle=angle)
                         previous = q1
+        if not self.condense:
+            U.n_qubits = 2*self.n_orbitals
         return U
 
     def make_upccgsd_ansatz(self, include_reference: bool = True, name: str = "UpCCGSD",label: str = None,order: int = None,
@@ -1249,7 +1249,6 @@ class QuantumChemistryHybridBase(qc_base):
         # convenience
         S = "S" in name.upper()
         D = "D" in name.upper()
-
         # first layer
         if not hcb_optimization:
             U = QCircuit()
@@ -1273,6 +1272,8 @@ class QuantumChemistryHybridBase(qc_base):
         for k in range(1, order):
             U += self.make_upccgsd_layer(include_singles=S, include_doubles=D, indices=indices, label=(label, k),
                                          spin_adapt_singles=spin_adapt_singles, neglect_z=neglect_z, mix_sd=mix_sd,firts_double=firts_double)
+        if not self.condense:
+            U.n_qubits = 2*self.n_orbitals
         return U
 
     def make_upccgsd_layer(self, indices, include_singles=True, include_doubles=True, assume_real=True, label=None,
@@ -1294,8 +1295,7 @@ class QuantumChemistryHybridBase(qc_base):
             if include_doubles:
                 if "jordanwigner" in self.transformation.name.lower() and not self.transformation.up_then_down:
                     # we can optimize with qubit excitations for the JW representation
-                    target = [(self.transformation.up(idx[0]), self.transformation.up(idx[1])),
-                              (self.transformation.down(idx[0]), self.transformation.down(idx[1]))]
+                    target = [(2*idx[0], 2*idx[1]),(2*idx[0]+1, 2*idx[1]+1)]
                     G = self.make_excitation_generator(indices=target)
                     P0 = self.make_excitation_generator(indices=target,form="p0")
                     U += gates.GeneralizedRotation(angle=angle,generator=G, p0=P0,assume_real=assume_real, **kwargs)

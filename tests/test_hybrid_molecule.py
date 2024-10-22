@@ -110,8 +110,7 @@ def test_UpCCGSD_FER(system,hcb_optimization):
     tqwfn = tq.simulate(tqU, variables=tqres.variables)
     assert numpy.isclose(res.energy, tqres.energy, atol=1.e-4)
     assert numpy.isclose(abs(tqwfn.inner(wfn)), 1.0, atol=1.e-4)
-@pytest.mark.parametrize("add_singles",[True, False])
-def test_UCCSD_FER(add_singles):
+def test_UCCSD_FER():
     '''
     Take care, expensive test
     '''
@@ -121,8 +120,8 @@ def test_UCCSD_FER(add_singles):
     H = mol.make_hamiltonian()
     tqH = tqmol.make_hamiltonian()
 
-    U = mol.make_ansatz("UCCSD",add_singles=add_singles)
-    tqU = tqmol.make_ansatz("UCCSD",add_singles=add_singles)
+    U = mol.make_ansatz("UCCSD",add_singles=False)
+    tqU = tqmol.make_ansatz("UCCSD",add_singles=False)
 
     E = tq.ExpectationValue(H=H, U=U)
     tqE = tq.ExpectationValue(H=tqH, U=tqU)

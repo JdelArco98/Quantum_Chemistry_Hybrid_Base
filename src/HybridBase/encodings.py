@@ -10,7 +10,7 @@ from tequila.hamiltonian.paulis import Sp,Sm,Z
 from tequila.hamiltonian.qubit_hamiltonian import QubitHamiltonian
 import openfermion
 from tequila.quantumchemistry.encodings import EncodingBase as EB
-
+from copy import deepcopy
 def known_encodings():
     # convenience for testing and I/O
     encodings = {
@@ -46,32 +46,35 @@ class JordanWigner(EB):
         super().__init__(n_electrons, n_orbitals, up_then_down)
         self.FER_SO,self.pos=self.select_to_list()
 
+    pass
+
     def select_to_list(self):
         """
         Internal function
         Read the select string to make the proper Fer and Bos lists
         :return : list of MOs for the Bos, MOs and SOs for the Fer space
         """
-
         hcb = 0
         FER_SO = []
         sel = self.select
         pos = {}
+        up = self.up_then_down
+        two = self.two_qubit
         for i in sel:
             if (sel[i]=="B"):
-                pos.update({2*i:2*i-hcb*self.condense})
-                if self.two_qubit:
-                    pos[2*i+1]=2*i+self.n_orbitals*self.up_then_down+(not self.up_then_down)
-                    FER_SO.append(2*i)
-                    FER_SO.append(2*i+self.n_orbitals*self.up_then_down+(not self.up_then_down)) #i + n_orb (if upthendown) + 1(else), cant be condense bcs two_qubits
+                pos[2*i] = i+(i-hcb)*(not up)
+                if two:
+                    pos[2*i+1]  =  i+self.n_orbitals*up+(not up)*(i+1)
+                    FER_SO.append(pos[2*i])
+                    FER_SO.append(pos[2*i+1])
                 elif self.condense:
                     hcb += 1
             else:
-                pos.update({2*i:2*i-hcb})
-                pos.update({2*i+1:2*i-hcb+self.up_then_down*self.n_orbitals+(not self.up_then_down)})
-                FER_SO.append(2 * i-hcb)
-                FER_SO.append(2*i-hcb+self.up_then_down*self.n_orbitals+(not self.up_then_down))
-        FER_SO.sort()
+                pos[2*i]  =  i+(i-hcb)*(not up)
+                pos[2*i+1]  =  i-hcb+up*self.n_orbitals+(not up)*(i+1)
+                FER_SO.append(pos[2*i])
+                FER_SO.append(pos[2*i+1])
+        # FER_SO.sort()
         return FER_SO,pos
 
     def __call__(self, fermion_operator: openfermion.FermionOperator, *args, **kwargs) -> QubitHamiltonian:
@@ -84,6 +87,8 @@ class JordanWigner(EB):
         fop = self.do_transform(fermion_operator=fermion_operator, *args, **kwargs)
         return self.post_processing(fop)
 
+    def post_processing(self, op, *args, **kwargs):
+        return op
     def do_transform(self, fermion_operator: typing.Union[openfermion.FermionOperator,list,tuple], *args, **kwargs) -> QubitHamiltonian:
         """
             Transform the fermi_operator list in its respective gates similar to openfermion function but taking
@@ -97,9 +102,9 @@ class JordanWigner(EB):
             :param i: number of the SO in full-Fermionic-not-upthendown over the creation operators acts
             :return :creation operator acting on the corresponding qubits
             """
-            d = self.pos
+            d = deepcopy(self.pos)
             a = Sm(d[i])
-            if self.select[i//2]=="F" or self.two_qubit:
+            if self.two_qubit or (self.select[i//2]=="F"):
                 for n in self.FER_SO[:self.FER_SO.index(d[i])]:
                     a *= Z(n)
             return a
@@ -110,9 +115,9 @@ class JordanWigner(EB):
             :param i: number of the SO in full-Fermionic-not-upthendown over the creation operators acts
             :return :annihilation operator acting on the corresponding qubits
             """
-            d = self.pos
+            d = deepcopy(self.pos)
             a = Sp(d[i])
-            if self.select[i//2] == "F" or self.two_qubit:
+            if self.two_qubit or (self.select[i//2] == "F"):
                 for n in self.FER_SO[:self.FER_SO.index(d[i])]:
                     a *= Z(n)
             return a
@@ -126,7 +131,7 @@ class JordanWigner(EB):
             index = pair[0]
             temp = pair[1]
             for term in index:
-                if self.select[term[0]//2]=="B" and term[0]%2 and not self.two_qubit:
+                if (not self.two_qubit) and (self.select[term[0]//2]=="B" and (term[0]%2)):
                     pass
                 else:
                     if (term[1]):
@@ -149,16 +154,18 @@ class JordanWigner(EB):
             bos = kwargs["bos"]
             kwargs.pop("bos")
         else: bos = False
+        if bos and self.condense:
+            raise TequilaException("hcb_to_me called with bos with condensed encoding")
         if bos and all:
-            TequilaException("hcb_to_me called with all and bos both True")
+            raise TequilaException("hcb_to_me called with all and bos both True")
         if all and self.condense:
             raise TequilaException("hcb_to me asked for all orbitals in condensed encoding")
         U = QCircuit()
-        pos = self.pos
-        if not self.two_qubit or bos:
+        pos = deepcopy(self.pos)
+        if not self.two_qubit and bos:
             for i in range(self.n_orbitals):
                 if self.select[i]=='B':
-                    pos[2*i+1] = 2*i +self.n_orbitals*self.up_then_down+(not self.up_then_down)
+                    pos[2*i+1] = i +self.n_orbitals*self.up_then_down+(not self.up_then_down)*(i+1)
         for i in range(self.n_orbitals):
             if bos and self.select[i]=='B':
                 U += X(target=pos[2 * i + 1], control=pos[2 * i])

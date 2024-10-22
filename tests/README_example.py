@@ -19,13 +19,13 @@ U += molecule.make_excitation_gate(indices=[(0,4),(1,9)],angle=tq.Variable('a'))
 ### ENERGY CIRCUIT MINIMIZATION
 H = molecule.make_hamiltonian() # The molecular Hamiltonian for a given Encoding is automatically built. For custom Hamiltonians please check tutorial above
 exp = tq.ExpectationValue(H=H,U=U) #Create the Expectation Value Object
-mini = tq.minimize(objective=exp,silent=False,initial_values={}) #Then you minimize the energy. You can provide initial variables
+mini = tq.minimize(objective=exp,silent=True,initial_values={}) #Then you minimize the energy. You can provide initial variables
 print('Minimized Angles:\n',mini.angles)
 print('Minimized Energy: ', mini.energy)
 
 
 ### ORBITAL OPTIMIZATION
-result = molecule.optimize_orbitals(molecule=molecule,circuit=Uspa,initial_guess='random') #Since random guess, may take some time
+result = molecule.optimize_orbitals(molecule=molecule,circuit=Uspa,initial_guess='random',silent=True) #Since random guess, may take some time
 omol = result.molecule
 print("Opt SPA Energy = ",result.energy)
 print("Select: ",omol.select)
