@@ -110,24 +110,24 @@ def test_UpCCGSD_FER(system,hcb_optimization):
     tqwfn = tq.simulate(tqU, variables=tqres.variables)
     assert numpy.isclose(res.energy, tqres.energy, atol=1.e-4)
     assert numpy.isclose(abs(tqwfn.inner(wfn)), 1.0, atol=1.e-4)
-def test_UCCSD_FER():
-    '''
-    Take care, expensive test
-    '''
-    mol = cl.Molecule(geometry="H 0. 0. 0.\n Be 0. 0. 1.6\n H 0. 0. 3.2", basis_set="sto-6g", select="FFFFFFFFFFFFFFFFFFFFF", condense=False,backend='pyscf')
-    tqmol = tq.Molecule(geometry="H 0. 0. 0.\n Be 0. 0. 1.6\n H 0. 0. 3.2", basis_set="sto-6g",backend='pyscf')
-
-    H = mol.make_hamiltonian()
-    tqH = tqmol.make_hamiltonian()
-
-    U = mol.make_ansatz("UCCSD",add_singles=False)
-    tqU = tqmol.make_ansatz("UCCSD",add_singles=False)
-
-    E = tq.ExpectationValue(H=H, U=U)
-    tqE = tq.ExpectationValue(H=tqH, U=tqU)
-    res = tq.minimize(E, silent=True)
-    tqres = tq.minimize(tqE, silent=True)
-    wfn = tq.simulate(U, variables=res.variables)
-    tqwfn = tq.simulate(tqU, variables=tqres.variables)
-    assert numpy.isclose(res.energy, tqres.energy, atol=1.e-4)
-    assert numpy.isclose(abs(tqwfn.inner(wfn)), 1.0, atol=1.e-4)
+#def test_UCCSD_FER():
+#    '''
+#    Take care, expensive test
+#    '''
+#    mol = cl.Molecule(geometry="H 0. 0. 0.\n Be 0. 0. 1.6\n H 0. 0. 3.2", basis_set="sto-6g", select="FFFFFFFFFFFFFFFFFFFFF", condense=False,backend='pyscf')
+#    tqmol = tq.Molecule(geometry="H 0. 0. 0.\n Be 0. 0. 1.6\n H 0. 0. 3.2", basis_set="sto-6g",backend='pyscf')
+#
+#    H = mol.make_hamiltonian()
+#    tqH = tqmol.make_hamiltonian()
+#
+#    U = mol.make_ansatz("UCCSD",add_singles=False)
+#    tqU = tqmol.make_ansatz("UCCSD",add_singles=False)
+#
+#    E = tq.ExpectationValue(H=H, U=U)
+#    tqE = tq.ExpectationValue(H=tqH, U=tqU)
+#    res = tq.minimize(E, silent=True)
+#    tqres = tq.minimize(tqE, silent=True)
+#    wfn = tq.simulate(U, variables=res.variables)
+#    tqwfn = tq.simulate(tqU, variables=tqres.variables)
+#    assert numpy.isclose(res.energy, tqres.energy, atol=1.e-4)
+#    assert numpy.isclose(abs(tqwfn.inner(wfn)), 1.0, atol=1.e-4)

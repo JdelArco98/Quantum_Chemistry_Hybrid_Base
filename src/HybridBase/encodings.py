@@ -102,7 +102,7 @@ class JordanWigner(EB):
             :param i: number of the SO in full-Fermionic-not-upthendown over the creation operators acts
             :return :creation operator acting on the corresponding qubits
             """
-            d = deepcopy(self.pos)
+            d = self.pos
             a = Sm(d[i])
             if self.two_qubit or (self.select[i//2]=="F"):
                 for n in self.FER_SO[:self.FER_SO.index(d[i])]:
@@ -115,7 +115,7 @@ class JordanWigner(EB):
             :param i: number of the SO in full-Fermionic-not-upthendown over the creation operators acts
             :return :annihilation operator acting on the corresponding qubits
             """
-            d = deepcopy(self.pos)
+            d = self.pos
             a = Sp(d[i])
             if self.two_qubit or (self.select[i//2] == "F"):
                 for n in self.FER_SO[:self.FER_SO.index(d[i])]:

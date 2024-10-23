@@ -17,7 +17,6 @@ from itertools import product
 from .encodings import known_encodings
 from .FermionicGateImpl import FermionicGateImpl
 from openfermion import FermionOperator
-import sys
 import copy
 class QuantumChemistryHybridBase(qc_base):
     bos_mo = []
@@ -91,9 +90,9 @@ class QuantumChemistryHybridBase(qc_base):
 
         if orbital_type is not None and orbital_type.lower() == "native":
             self.integral_manager.transform_to_native_orbitals()
-
+        #tq init overwriten bcs I need the number of orbitals for select->transformation
         self.update_select(select,n_orb=self.n_orbitals)
-        self.transformation = self._initialize_transformation(transformation=transformation,select=self.select,two_qubit=self.two_qubit,condense=self.condense)
+        self.transformation = self._initialize_transformation(transformation=transformation,*args,**kwargs)
         self.up_then_down = self.transformation.up_then_down
         self._rdm1 = None
         self._rdm2 = None
@@ -116,12 +115,10 @@ class QuantumChemistryHybridBase(qc_base):
             :return : corrected selection dict
             """
             sel = {}
-            if (len(select) == n_orb):
-                pass
-            elif (len(select) > n_orb):
+            if (len(select) >= n_orb):
                 select = select[:n_orb]
             else:
-                select = select+ (n_orb-len(select))*"B"
+                select += (n_orb-len(select))*"B"
             for i in range(len(select)):
                 if select[i] in ["F","B"]:
                     sel.update({i: select[i]})
@@ -137,12 +134,11 @@ class QuantumChemistryHybridBase(qc_base):
             sel = {}
             for i in range(n_orb):
                 if i in [*select.keys()]:
-                    sel.update({i:select[i]})
+                    if select[i] in ["F","B"]:
+                        sel.update({i:select[i]})
+                    else: raise TequilaException("Warning, encoding character not recognised on entry {it}.\n Please choose between F (Fermionic) and B (Bosonic).".format(it={i:sel[i]}))
                 else:
                     sel.update({i:'B'})
-            for i in range(n_orb):
-                if not sel[i] in ["F","B"]:
-                    raise TequilaException("Warning, encoding character not recognised on entry {it}.\n Please choose between F (Fermionic) and B (Bosonic).".format(it={i:sel[i]}))
             return sel
         def verify_selection_list(select:typing.Union[list,tuple],n_orb:int)->dict:
             """
@@ -152,9 +148,7 @@ class QuantumChemistryHybridBase(qc_base):
             """
             select = [*select]
             sel = {}
-            if (len(select) == n_orb):
-                pass
-            elif (len(select) > n_orb):
+            if (len(select) >= n_orb):
                 select = select[:n_orb]
             else:
                 select= select + (n_orb-len(select))*["B"]
@@ -1103,7 +1097,7 @@ class QuantumChemistryHybridBase(qc_base):
                 optimize = True
             else:
                 optimize = False
-        pos = copy.deepcopy(self.transformation.pos)
+        pos = self.transformation.pos
         U = QCircuit()
         # construction of the optimized circuit
         if optimize:
