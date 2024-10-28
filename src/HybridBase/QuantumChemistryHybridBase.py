@@ -185,18 +185,19 @@ class QuantumChemistryHybridBase(qc_base):
             self.bos_orb = hcb
             self.fer_orb = jworb
             return BOS_MO, FER_MO, FER_SO
-        if type(select) is str:
-            self.select = verify_selection_str(select=select,n_orb=n_orb)
-        elif type(select) is dict:
-            self.select = verify_selection_dict(select=select,n_orb=n_orb)
+        if type(select) is dict:
+            select = verify_selection_dict(select=select,n_orb=n_orb)
+        elif type(select) is str:
+            select = verify_selection_str(select=select,n_orb=n_orb)
         elif type(select) is list or type(select) is tuple:
-            self.select = verify_selection_list(select=select,n_orb=n_orb)
+            select = verify_selection_list(select=select,n_orb=n_orb)
         else:
             try:
-                self.select = verify_selection_list(select=select,n_orb=n_orb)
+                select = verify_selection_list(select=select,n_orb=n_orb)
             except:
                 raise TequilaException(f"Warning, encoding format not recognised: {type(select)}.\n Please choose either a Str, Dict, List or Tuple.")
-        self.BOS_MO, self.FER_MO, self.FER_SO= select_to_list(self.select)
+        self.BOS_MO, self.FER_MO, self.FER_SO= select_to_list(select)
+        self.select = select
 
     def use_native_orbitals(self, inplace=False):
         """
@@ -279,7 +280,6 @@ class QuantumChemistryHybridBase(qc_base):
                             if ((i % 2) == (l % 2) and (k % 2) == (j % 2)):
                                 H_FER.append((((l,1),(k,1),(j,0),(i,0)),0.5 * self._h2.elems[l // 2][k // 2][j // 2][i // 2]))
             return self.transformation(H_FER)
-            pass
         def make_bosonic_hamiltonian() -> QubitHamiltonian:
             '''
             Internal function
@@ -973,7 +973,6 @@ class QuantumChemistryHybridBase(qc_base):
         assert qop.is_hermitian()
         for k, v in qop.qubit_operator.terms.items():
             qop.qubit_operator.terms[k] = to_float(v)
-        qop = qop.simplify()
         if len(qop) == 0:
             warnings.warn("Excitation generator is a unit operator.\n"
                           "Non-standard transformations might not work with general fermionic operators\n"
@@ -1382,3 +1381,15 @@ class QuantumChemistryHybridBase(qc_base):
         return gates.QubitExcitation(angle=angle, target=target, assume_real=assume_real, control=control,compile_options=compile_options)
     def hcb_to_me(self,**kwargs):
         return self.transformation.hcb_to_me(**kwargs)
+
+if __name__ == "__main__":
+    import tequila as tq
+    import HybridBase as hb
+
+
+    def a():
+        start = time.time()
+        for i in range(2):
+            mol = hb.Molecule(geometry="H 0. 0. 0. \n Be  0. 0. 1.5 \n H 0. 0. 3.",basis_set="6-31g",select="BFFBFBFBBFBFBFBFBFBFBF")
+            H = mol.make_hamiltonian()
+ 

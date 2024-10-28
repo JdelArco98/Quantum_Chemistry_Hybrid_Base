@@ -46,8 +46,6 @@ class JordanWigner(EB):
         super().__init__(n_electrons, n_orbitals, up_then_down)
         self.FER_SO,self.pos=self.select_to_list()
 
-    pass
-
     def select_to_list(self):
         """
         Internal function
