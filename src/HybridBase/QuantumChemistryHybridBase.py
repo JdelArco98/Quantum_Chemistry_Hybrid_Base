@@ -687,7 +687,6 @@ class QuantumChemistryHybridBase(qc_base):
         -------
             Optimized Tequila Hybrid Molecule
         """
-        from .__init__ import Molecule
         hybrid = hasattr(molecule,'select')
         if molecule_arguments is None:
             if hybrid:
@@ -701,7 +700,7 @@ class QuantumChemistryHybridBase(qc_base):
                                                            pyscf_arguments=pyscf_arguments, silent=silent,
                                                            vqe_solver_arguments=vqe_solver_arguments,
                                                            initial_guess=initial_guess, return_mcscf=return_mcscf,
-                                                           use_hcb=use_hcb, molecule_factory=Molecule,
+                                                           use_hcb=use_hcb, molecule_factory=QuantumChemistryHybridBase,
                                                            molecule_arguments=molecule_arguments, *args, **kwargs)
         else:
             result = optimize_orbitals(molecule=molecule, circuit=circuit, vqe_solver=vqe_solver,
@@ -710,7 +709,7 @@ class QuantumChemistryHybridBase(qc_base):
                                                            initial_guess=initial_guess, return_mcscf=return_mcscf,
                                                            use_hcb=use_hcb, molecule_factory=molecule_factory,
                                                            molecule_arguments=molecule_arguments, *args, **kwargs)
-        result.molecule = Molecule(**molecule_arguments,basis_set=result.molecule.parameters.basis_set,one_body_integrals=result.molecule.integral_manager.one_body_integrals,two_body_integrals=result.molecule.integral_manager.two_body_integrals,constant_term=result.molecule.integral_manager.constant_term)
+        result.molecule = QuantumChemistryHybridBase(**molecule_arguments,integral_manager=result.molecule.integral_manager)
         return result
     # Cicuit Related Functions
     def verify_excitation(self, indices: typing.Iterable[typing.Tuple[int, int]], warning:bool=True)->bool:
