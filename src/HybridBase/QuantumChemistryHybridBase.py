@@ -1381,14 +1381,55 @@ class QuantumChemistryHybridBase(qc_base):
     def hcb_to_me(self,**kwargs):
         return self.transformation.hcb_to_me(**kwargs)
 
-if __name__ == "__main__":
-    import tequila as tq
-    import HybridBase as hb
+    def compute_restricted_energy(self, method, *args, **kwargs):
+        """
+            Call classical methods over PySCF (needs to be installed) or
+            use as a shortcut to calculate quantum energies (see make_upccgsd_ansatz)
+            Difference with self.compute_energy() is that here the inteaction restriction
+            is considered
+            Parameters
+            ----------
+            method: method name
+                    classical: HF, MP2, CCSD, CCSD(T), FCI -- with pyscf
+                    quantum: UpCCD, UpCCSD, UpCCGSD, k-UpCCGSD, UCCSD,
+                    see make_upccgsd_ansatz of the this class for more information
+            args
+            kwargs: for quantum methods, keyword arguments for minimizer
 
-
-    def a():
-        start = time.time()
-        for i in range(2):
-            mol = hb.Molecule(geometry="H 0. 0. 0. \n Be  0. 0. 1.5 \n H 0. 0. 3.",basis_set="6-31g",select="BFFBFBFBBFBFBFBFBFBFBF")
-            H = mol.make_hamiltonian()
- 
+            Returns
+            -------
+        """
+        from tequila import Molecule as mol
+        c, h, g = self.get_integrals()
+        BOS_L = self.BOS_MO
+        NBOS_L = self.FER_MO
+        for i in BOS_L:
+            for j in BOS_L:
+                if i != j:
+                    h[i][j] = 0.
+        for i in BOS_L:
+            for j in NBOS_L:
+                h[i][j] = 0.
+                h[j][i] = 0.
+        new_g = numpy.zeros(shape=(len(g.elems), len(g.elems), len(g.elems), len(g.elems)))
+        for i in NBOS_L:
+            for j in NBOS_L:
+                for k in NBOS_L:
+                    for l in NBOS_L:
+                        new_g[i][j][k][l] = g.elems[i][j][k][l]
+        for i in BOS_L:
+            for j in BOS_L:
+                new_g[i][i][j][j] = g.elems[i][i][j][j]
+                new_g[i][j][j][i] = g.elems[i][j][j][i]
+                new_g[i][j][i][j] = g.elems[i][j][i][j]
+        for i in NBOS_L:
+            for j in NBOS_L:
+                for k in BOS_L:
+                    new_g[i][j][k][k] = g.elems[i][j][k][k]
+                    new_g[k][k][i][j] = g.elems[k][k][i][j]
+                    new_g[i][k][k][j] = g.elems[i][k][k][j]
+                    new_g[k][i][j][k] = g.elems[k][i][j][k]
+                    new_g[i][k][j][k] = g.elems[i][k][j][k]
+                    new_g[k][i][k][j] = g.elems[k][i][k][j]
+        g.elems = new_g
+        return mol(parameters=self.parameters,one_body_integrals=h,two_body_integrals=g,nuclear_repulsion=c,backend='pyscf',transformation=self.transformation.name,n_electrons=self.n_electrons).compute_energy(method=method, *args,**kwargs)
