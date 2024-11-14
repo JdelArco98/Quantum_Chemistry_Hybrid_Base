@@ -7,7 +7,7 @@ Install this program with all the dependencies like this:
 conda create -n myenv python=3.9
 conda activate myenv
 
-cd Hybrid_Base
+cd Quantum_Chemistry_Hybrid_Base
 pip install -e .
 ```
 
