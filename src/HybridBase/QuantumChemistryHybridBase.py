@@ -97,7 +97,7 @@ class QuantumChemistryHybridBase(qc_base):
         self._rdm1 = None
         self._rdm2 = None
     #Select Related Functions
-    def update_select(self,select:typing.Union[str,dict,list,tuple],n_orb:int):
+    def update_select(self,select:typing.Union[str,dict,list,tuple],n_orb:int=None):
         '''
         Parameters
         ----------
@@ -107,7 +107,7 @@ class QuantumChemistryHybridBase(qc_base):
         -------
         Updates the MO cofication data. Returns Instance of the class
         '''
-
+        if n_orb is None: n_orb = self.n_orbitals
         def verify_selection_str(select:str,n_orb:int)->dict:
             """
             Internal function
@@ -695,6 +695,14 @@ class QuantumChemistryHybridBase(qc_base):
                                   "integral_tresh": molecule.integral_tresh,"parameters": molecule.parameters,
                                   "transformation": molecule.transformation,"backend":'pyscf'}
             else: molecule_arguments = {"parameters": molecule.parameters,"transformation": molecule.transformation,"backend":'pyscf'}
+        else:
+            if hybrid:
+                mol_args = {"select": molecule.select, "condense": molecule.condense,
+                                  "two_qubit": molecule.two_qubit,
+                                  "integral_tresh": molecule.integral_tresh,"parameters": molecule.parameters,
+                                  "transformation": molecule.transformation,"backend":'pyscf'}
+                mol_args.update(molecule_arguments)
+                molecule_arguments = mol_args
         if molecule_factory is None:
             result = optimize_orbitals(molecule=molecule, circuit=circuit, vqe_solver=vqe_solver,
                                                            pyscf_arguments=pyscf_arguments, silent=silent,
@@ -710,6 +718,38 @@ class QuantumChemistryHybridBase(qc_base):
                                                            use_hcb=use_hcb, molecule_factory=molecule_factory,
                                                            molecule_arguments=molecule_arguments, *args, **kwargs)
         result.molecule = QuantumChemistryHybridBase(**molecule_arguments,integral_manager=result.molecule.integral_manager)
+        return result
+    
+    def transform_orbitals(self, orbital_coefficients, ignore_active_space=False, name=None, *args, **kwargs):
+        """
+        Parameters
+        ----------
+        orbital_coefficients: second index is new orbital indes, first is old orbital index (summed over), indices are assumed to be defined on the active space
+        ignore_active_space: if true orbital_coefficients are not assumed to be given in the active space
+        name: str, name the new orbitals
+        args
+        kwargs
+
+        Returns
+        -------
+        New molecule with transformed orbitals
+        """
+
+        U = numpy.eye(self.integral_manager.orbital_coefficients.shape[0])
+        # mo_coeff by default only acts on the active space
+        active_indices = [o.idx_total for o in self.integral_manager.active_orbitals]
+
+        if ignore_active_space:
+            U = orbital_coefficients
+        else:
+            for kk,k in enumerate(active_indices):
+                for ll,l in enumerate(active_indices):
+                    U[k][l] = orbital_coefficients[kk][ll]
+
+        # can not be an instance of a specific backend (otherwise we get inconsistencies with classical methods in the backend)
+        integral_manager = copy.deepcopy(self.integral_manager)
+        integral_manager.transform_orbitals(U=U, name=name)
+        result = QuantumChemistryHybridBase(parameters=self.parameters, integral_manager=integral_manager, transformation=self.transformation,select=self.select,two_qubit=self.two_qubit,condense=self.condense,integral_tresh=self.integral_tresh)  
         return result
     # Cicuit Related Functions
     def verify_excitation(self, indices: typing.Iterable[typing.Tuple[int, int]], warning:bool=True)->bool:
