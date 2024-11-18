@@ -1421,6 +1421,31 @@ class QuantumChemistryHybridBase(qc_base):
     def hcb_to_me(self,**kwargs):
         return self.transformation.hcb_to_me(**kwargs)
 
+    def compute_energy(self, method, *args, **kwargs):
+        """
+        Call classical methods over PySCF (needs to be installed) or
+        use as a shortcut to calculate quantum energies (see make_upccgsd_ansatz)
+
+        Parameters
+        ----------
+        method: method name
+                classical: HF, MP2, CCSD, CCSD(T), FCI -- with pyscf
+                quantum: UpCCD, UpCCSD, UpCCGSD, k-UpCCGSD, UCCSD,
+                see make_upccgsd_ansatz of the this class for more information
+        args
+        kwargs: for quantum methods, keyword arguments for minimizer
+
+        Returns
+        -------
+
+        """
+        if 'hybrid' in method:
+            method = method.replace('hybrid','').strip()
+            if method[0] == '-':
+                method = method[1:]
+            return self.compute_restricted_energy(method,*args,**kwargs)
+        else:
+            return super().compute_energy(method,*args,**kwargs)
     def compute_restricted_energy(self, method, *args, **kwargs):
         """
             Call classical methods over PySCF (needs to be installed) or
