@@ -19,10 +19,6 @@ from .FermionicGateImpl import FermionicGateImpl
 from openfermion import FermionOperator
 import copy
 class QuantumChemistryHybridBase(qc_base):
-    bos_mo = []
-    fer_mo = []
-    fer_so = []
-
     def __init__(self, parameters: ParametersQC,select: typing.Union[str,dict]={},transformation: typing.Union[str, typing.Callable] = None, active_orbitals: list = None,
                  frozen_orbitals: list = None, orbital_type: str = None,reference_orbitals: list = None, orbitals: list = None, *args, **kwargs):
         '''
@@ -198,6 +194,7 @@ class QuantumChemistryHybridBase(qc_base):
                 raise TequilaException(f"Warning, encoding format not recognised: {type(select)}.\n Please choose either a Str, Dict, List or Tuple.")
         self.BOS_MO, self.FER_MO, self.FER_SO= select_to_list(select)
         self.select = select
+        self.transformation.update_select(select)
 
     def use_native_orbitals(self, inplace=False):
         """
@@ -216,7 +213,8 @@ class QuantumChemistryHybridBase(qc_base):
         else:
             integral_manager = copy.deepcopy(self.integral_manager)
             integral_manager.transform_to_native_orbitals()
-            result = QuantumChemistryHybridBase(parameters=self.parameters, integral_manager=integral_manager, transformation=self.transformation,select=self.select,two_qubit=self.two_qubit,condense=self.condense,integral_tresh=self.integral_tresh)
+            parameters = copy.deepcopy(self.parameters)
+            result = QuantumChemistryHybridBase(parameters=parameters, integral_manager=integral_manager, transformation=self.transformation,select=self.select,two_qubit=self.two_qubit,condense=self.condense,integral_tresh=self.integral_tresh)
             return result
     # Tranformation Related Function
     def _initialize_transformation(self, transformation=None, *args, **kwargs):
@@ -626,7 +624,24 @@ class QuantumChemistryHybridBase(qc_base):
         qops += _build_2bdy_operators_mix() if get_rdm2 else []
 
         # Compute expected values
-        evals = simulate(ExpectationValue(H=qops, U=U, shape=[len(qops)]), variables=variables)
+        rdm1 = None
+        rdm2 = None
+        from tequila import QTensor
+        if evaluate:
+            if rdm_trafo is None:
+                evals = simulate(ExpectationValue(H=qops, U=U, shape=[len(qops)]), variables=variables)
+            else:
+                qops = [rdm_trafo.dagger() * qops[i] * rdm_trafo for i in range(len(qops))]
+                evals = simulate(ExpectationValue(H=qops, U=U, shape=[len(qops)]), variables=variables)
+        else:
+            if rdm_trafo is None:
+                evals = [ExpectationValue(H=x, U=U) for x in qops]
+                N = self.n_orbitals # if spin_free else 2*self.n_orbitals
+                rdm1 = QTensor(shape=[N, N])
+                rdm2 = QTensor(shape=[N, N, N, N])
+            else:
+                raise TequilaException("compute_rdms: rdm_trafo was set but evaluate flag is False (not supported)")
+            
         # Split expectation values in 1- and 2-particle expectation values
         if get_rdm1:
             len_1 = self.n_orbitals * (self.n_orbitals + 1) // 2
@@ -642,7 +657,6 @@ class QuantumChemistryHybridBase(qc_base):
             rdm2_ = NBodyTensor(elems=rdm2, ordering="dirac")
             rdm2_.reorder(to=ordering)
             rdm2 = rdm2_.elems
-
         if get_rdm1:
             if get_rdm2:
                 self._rdm2 = rdm2
@@ -1421,7 +1435,7 @@ class QuantumChemistryHybridBase(qc_base):
     def hcb_to_me(self,**kwargs):
         return self.transformation.hcb_to_me(**kwargs)
 
-    def compute_energy(self, method, *args, **kwargs):
+    def compute_energy(self, method:str, *args, **kwargs):
         """
         Call classical methods over PySCF (needs to be installed) or
         use as a shortcut to calculate quantum energies (see make_upccgsd_ansatz)
@@ -1439,6 +1453,7 @@ class QuantumChemistryHybridBase(qc_base):
         -------
 
         """
+        method = method.lower()
         if 'hybrid' in method:
             method = method.replace('hybrid','').strip()
             if method[0] == '-':
@@ -1446,7 +1461,7 @@ class QuantumChemistryHybridBase(qc_base):
             return self.compute_restricted_energy(method,*args,**kwargs)
         else:
             return super().compute_energy(method,*args,**kwargs)
-    def compute_restricted_energy(self, method, *args, **kwargs):
+    def compute_restricted_energy(self, method:str, *args, **kwargs):
         """
             Call classical methods over PySCF (needs to be installed) or
             use as a shortcut to calculate quantum energies (see make_upccgsd_ansatz)
@@ -1497,4 +1512,5 @@ class QuantumChemistryHybridBase(qc_base):
                     new_g[i][k][j][k] = g.elems[i][k][j][k]
                     new_g[k][i][k][j] = g.elems[k][i][k][j]
         g.elems = new_g
-        return mol(parameters=self.parameters,one_body_integrals=h,two_body_integrals=g,nuclear_repulsion=c,backend='pyscf',transformation=self.transformation.name,n_electrons=self.n_electrons).compute_energy(method=method, *args,**kwargs)
+        parameters = copy.deepcopy(self.parameters)
+        return mol(parameters=parameters,one_body_integrals=h,two_body_integrals=g,nuclear_repulsion=c,backend='pyscf',transformation=self.transformation.name,n_electrons=self.n_electrons).compute_energy(method=method, *args,**kwargs)

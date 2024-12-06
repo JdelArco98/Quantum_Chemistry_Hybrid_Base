@@ -91,8 +91,9 @@ class QuantumChemistryPySCF(QuantumChemistryHybridBase):
 
     def compute_energy(self, method: str, *args, **kwargs) -> float:
         method = method.lower()
-
-        if method == "hf":
+        if 'hybrid' in method:
+            return super().compute_energy(method,*args,**kwargs)
+        elif method == "hf":
             return self._get_hf(do_not_solve=False, **kwargs).e_tot
         elif method == "mp2":
             return self._run_mp2(**kwargs).e_tot

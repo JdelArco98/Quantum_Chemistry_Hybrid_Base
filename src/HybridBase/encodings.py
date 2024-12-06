@@ -31,7 +31,6 @@ def known_encodings():
 class JordanWigner(EB):
     _ucc_support = True
     def __init__(self, n_electrons, n_orbitals,select:dict, up_then_down=False ,*args, **kwargs):
-        self.select = select
         if ("condense" in kwargs):
             self.condense = kwargs["condense"]
             kwargs.pop("condense")
@@ -44,36 +43,7 @@ class JordanWigner(EB):
             self.two_qubit = False
         if self.two_qubit : self.condense = False
         super().__init__(n_electrons, n_orbitals, up_then_down)
-        self.FER_SO,self.pos=self.select_to_list()
-
-    def select_to_list(self):
-        """
-        Internal function
-        Read the select string to make the proper Fer and Bos lists
-        :return : list of MOs for the Bos, MOs and SOs for the Fer space
-        """
-        hcb = 0
-        FER_SO = []
-        sel = self.select
-        pos = {}
-        up = self.up_then_down
-        two = self.two_qubit
-        for i in sel:
-            if (sel[i]=="B"):
-                pos[2*i] = i+(i-hcb)*(not up)
-                if two:
-                    pos[2*i+1]  =  i+self.n_orbitals*up+(not up)*(i+1)
-                    FER_SO.append(pos[2*i])
-                    FER_SO.append(pos[2*i+1])
-                elif self.condense:
-                    hcb += 1
-            else:
-                pos[2*i]  =  i+(i-hcb)*(not up)
-                pos[2*i+1]  =  i-hcb+up*self.n_orbitals+(not up)*(i+1)
-                FER_SO.append(pos[2*i])
-                FER_SO.append(pos[2*i+1])
-        # FER_SO.sort()
-        return FER_SO,pos
+        self.FER_SO,self.pos=self.update_select(select)
 
     def __call__(self, fermion_operator: openfermion.FermionOperator, *args, **kwargs) -> QubitHamiltonian:
         """
@@ -203,3 +173,114 @@ class JordanWigner(EB):
 
     def down(self, i):
         return self.pos[2*i+1]
+
+    def update_select(self, select: typing.Union[str, dict, list, tuple], n_orb: int = None):
+        '''
+        Parameters
+        ----------
+        select: codification of the transformation for each MO.
+
+        Returns
+        -------
+        Updates the MO cofication data. Returns Instance of the class
+        '''
+        if n_orb is None: n_orb = self.n_orbitals
+
+        def verify_selection_str(select: str, n_orb: int) -> dict:
+            """
+            Internal function
+            Checks if the orbital selection string has the appropiated lenght, otherwise corrects it
+            :return : corrected selection dict
+            """
+            sel = {}
+            if (len(select) >= n_orb):
+                select = select[:n_orb]
+            else:
+                select += (n_orb - len(select)) * "B"
+            for i in range(len(select)):
+                if select[i] in ["F", "B"]:
+                    sel.update({i: select[i]})
+                else:
+                    raise TequilaException(
+                        f"Warning, encoding character not recognised on position {i}: {select[i]}.\n Please choose between F (Fermionic) and B (Bosonic).")
+            return sel
+
+        def verify_selection_dict(select: dict, n_orb: int) -> dict:
+            """
+            Internal function
+            Checks if the orbital selection dictionary has the appropiated lenght, otherwise corrects it
+            :return : corrected selection dict
+            """
+            sel = {}
+            for i in range(n_orb):
+                if i in [*select.keys()]:
+                    if select[i] in ["F", "B"]:
+                        sel.update({i: select[i]})
+                    else:
+                        raise TequilaException(
+                            "Warning, encoding character not recognised on entry {it}.\n Please choose between F (Fermionic) and B (Bosonic).".format(it={i: sel[i]}))
+                else:
+                    sel.update({i: 'B'})
+            return sel
+
+        def verify_selection_list(select: typing.Union[list, tuple], n_orb: int) -> dict:
+            """
+            Internal function
+            Checks if the orbital selection string has the appropiated lenght, otherwise corrects it
+            :return : corrected selection dict
+            """
+            select = [*select]
+            sel = {}
+            if (len(select) >= n_orb):
+                select = select[:n_orb]
+            else:
+                select = select + (n_orb - len(select)) * ["B"]
+            for i in range(len(select)):
+                if select[i] in ["F", "B"]:
+                    sel.update({i: select[i]})
+                else:
+                    TequilaException(
+                        f"Warning, encoding character not recognised on position {i}: {select[i]}.\n Please choose between F (Fermionic) and B (Bosonic).")
+            return sel
+
+        def select_to_list(sel):
+            """
+            Internal function
+            Read the select string to make the proper Fer and Bos lists
+            :return : list of MOs for the Bos, MOs and SOs for the Fer space
+            """
+            hcb = 0
+            FER_SO = []
+            pos = {}
+            up = self.up_then_down
+            two = self.two_qubit
+            for i in sel:
+                if (sel[i] == "B"):
+                    pos[2 * i] = i + (i - hcb) * (not up)
+                    if two:
+                        pos[2 * i + 1] = i + self.n_orbitals * up + (not up) * (i + 1)
+                        FER_SO.append(pos[2 * i])
+                        FER_SO.append(pos[2 * i + 1])
+                    elif self.condense:
+                        hcb += 1
+                else:
+                    pos[2 * i] = i + (i - hcb) * (not up)
+                    pos[2 * i + 1] = i - hcb + up * self.n_orbitals + (not up) * (i + 1)
+                    FER_SO.append(pos[2 * i])
+                    FER_SO.append(pos[2 * i + 1])
+            return FER_SO, pos
+
+        if type(select) is dict:
+            select = verify_selection_dict(select=select, n_orb=n_orb)
+        elif type(select) is str:
+            select = verify_selection_str(select=select, n_orb=n_orb)
+        elif type(select) is list or type(select) is tuple:
+            select = verify_selection_list(select=select, n_orb=n_orb)
+        else:
+            try:
+                select = verify_selection_list(select=select, n_orb=n_orb)
+            except:
+                raise TequilaException(
+                    f"Warning, encoding format not recognised: {type(select)}.\n Please choose either a Str, Dict, List or Tuple.")
+        self.FER_SO, self.pos = select_to_list(select)
+        self.select = select
