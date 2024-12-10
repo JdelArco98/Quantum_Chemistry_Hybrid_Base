@@ -87,8 +87,9 @@ class QuantumChemistryHybridBase(qc_base):
         if orbital_type is not None and orbital_type.lower() == "native":
             self.integral_manager.transform_to_native_orbitals()
         #tq init overwriten bcs I need the number of orbitals for select->transformation
+        self.select = {}
+        self.transformation = self._initialize_transformation(transformation=transformation,*args,**kwargs) #here select set only to full-HCB. changed afterwards
         self.update_select(select,n_orb=self.n_orbitals)
-        self.transformation = self._initialize_transformation(transformation=transformation,*args,**kwargs)
         self.up_then_down = self.transformation.up_then_down
         self._rdm1 = None
         self._rdm2 = None
@@ -1427,7 +1428,7 @@ class QuantumChemistryHybridBase(qc_base):
         if self.transformation.up_then_down:
             consistency = [x < self.n_orbitals for x in target]
         else:
-            consistency = [x % 2 == 0  for x in target]
+            consistency = [True]
         if not all(consistency):
             raise TequilaException(
                 "make_hardcore_boson_excitation_gate: Inconsistencies in indices={} for encoding: {}".format(indices, self.transformation))

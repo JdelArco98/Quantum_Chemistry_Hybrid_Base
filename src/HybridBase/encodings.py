@@ -43,7 +43,7 @@ class JordanWigner(EB):
             self.two_qubit = False
         if self.two_qubit : self.condense = False
         super().__init__(n_electrons, n_orbitals, up_then_down)
-        self.FER_SO,self.pos=self.update_select(select)
+        self.update_select(select)
 
     def __call__(self, fermion_operator: openfermion.FermionOperator, *args, **kwargs) -> QubitHamiltonian:
         """
