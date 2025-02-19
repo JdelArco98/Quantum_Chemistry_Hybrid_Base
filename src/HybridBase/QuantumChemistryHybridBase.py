@@ -338,6 +338,14 @@ class QuantumChemistryHybridBase(qc_base):
         H = make_fermionic_hamiltonian() + make_bosonic_hamiltonian() + make_interaction_hamiltonian() + self.C
         return H.simplify(self.integral_tresh)
 
+    def make_hardcore_boson_hamiltonian(self):
+        '''
+        Just for consistency.
+        '''
+        if not len(self.FER_MO):
+            print("Warning HCB Hamiltonian called but the encoding is not full HCB")
+        return self.make_hamiltonian()
+
     def compute_rdms(self, U: QCircuit = None, variables: Variables = None, spin_free: bool = True,
                      get_rdm1: bool = True, get_rdm2: bool = True, ordering="dirac", use_hcb: bool = False,
                      rdm_trafo: QubitHamiltonian = None, evaluate=True):
