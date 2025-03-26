@@ -21,6 +21,14 @@ def test_hamiltonian(system,select,two_qubit):
     result = tq.minimize(E,silent=True)
     result1 = tq.minimize(E1,silent=True)
     assert numpy.isclose(result1.energy,result.energy,10**-5)
+@pytest.mark.parametrize("system",["H 0.0 0.0 0.0\nHe 0.0 0.0 1.3\nH 0.0 0.0 2.6","Be 0. 0. 0."])
+@pytest.mark.parametrize("core",[[],[0],[0,1]])
+def  test_native_active_space(system,core):
+    mol = cl.Molecule(geometry=system,basis_set='sto-3g',backend='pyscf',frozen_core=False,select='FFFFFFFFFFFFFFFFFFFFFFFFFFF')
+    eival, eivect = numpy.linalg.eigh(mol.make_hamiltonian().to_matrix())
+    mol = mol.use_native_orbitals(core=core)
+    eival1, eivect1 = numpy.linalg.eigh(mol.make_hamiltonian().to_matrix())
+    assert numpy.allclose(eival,eival1)
 @pytest.mark.parametrize("two_qubit",[True,False])
 @pytest.mark.parametrize("transformation",["Jordan-Wigner","reordered-Jordan-Wigner"])
 def test_opt_SPA(two_qubit,transformation):
