@@ -218,11 +218,7 @@ class QuantumChemistryHybridBase(qc_base):
         s = self.integral_manager.overlap_integrals
         d = self.integral_manager.get_orthonormalized_orbital_coefficients()
         def inner(a, b,s):
-            norm = 0.
-            for i in range(len(d)):
-                for j in range(len(d)):
-                    norm += a[i] * b[j] * s[i][j]
-            return norm
+            return numpy.sum(numpy.multiply(numpy.outer(a,b),s))
         def orthogonalize(c,d,s):
             '''
             :return: orthogonalized orbitals with core HF orbitals and active Orthongonalized Native orbitals.
@@ -272,7 +268,7 @@ class QuantumChemistryHybridBase(qc_base):
             ov = numpy.zeros(shape=(len(self.integral_manager.orbitals)))
             for i in core:
                 for j in range(len(d)):
-                    ov[j] += inner(c[i], d[j],s)
+                    ov[j] += numpy.abs(inner(c[i], d[j],s))
             act = []
             for i in range(len(self.integral_manager.orbitals) - len(core)):
                 idx = numpy.argmin(ov)
