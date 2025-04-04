@@ -319,14 +319,14 @@ class QuantumChemistryHybridBase(qc_base):
             if inplace:
                 self.integral_manager = self.initialize_integral_manager(one_body_integrals=self.integral_manager.one_body_integrals,
                 two_body_integrals=self.integral_manager.two_body_integrals,constant_term=self.integral_manager.constant_term,
-                 active_orbitals=[*to_active.values()],reference_orbitals=[i.idx for i in self.integral_manager.reference_orbitals]
+                 active_orbitals=[*to_active.values()],reference_orbitals=[i.idx_total for i in self.integral_manager.reference_orbitals]
                 , frozen_orbitals=core, orbital_coefficients=coeff, overlap_integrals=s)
                 self.update_select({active.index(i):self.select[i] for i in active})
                 return self
             else:
                 integral_manager = self.initialize_integral_manager(one_body_integrals=self.integral_manager.one_body_integrals,
                 two_body_integrals=self.integral_manager.two_body_integrals,constant_term=self.integral_manager.constant_term
-                , active_orbitals=[*to_active.values()],reference_orbitals=[i.idx for i in self.integral_manager.reference_orbitals]
+                , active_orbitals=[*to_active.values()],reference_orbitals=[i.idx_total for i in self.integral_manager.reference_orbitals]
                 , frozen_orbitals=core, orbital_coefficients=coeff, overlap_integrals=s)
                 parameters = copy.deepcopy(self.parameters)
                 result = QuantumChemistryHybridBase(parameters=parameters, integral_manager=integral_manager,transformation=self.transformation,
