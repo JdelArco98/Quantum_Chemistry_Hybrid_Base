@@ -475,7 +475,7 @@ class QuantumChemistryHybridBase(qc_base):
         '''
         Just for consistency.
         '''
-        if not len(self.FER_MO):
+        if len(self.FER_MO):
             print("Warning HCB Hamiltonian called but the encoding is not full HCB")
         return self.make_hamiltonian()
 
