@@ -316,12 +316,17 @@ class QuantumChemistryHybridBase(qc_base):
             coeff = orthogonalize(c, d, s)
             if not all([i == to_active[i] for i in to_active]):
                 print("Orbital may be reordered, please double check F/B selection")
+            if len(active) == len(self.select):
+                new_select = {i: self.select[i] for i in range(len(active))}
+            else:
+                s = {i: self.select[i] for i in self.select.keys() if i not in core}
+                new_select = {i: s[[*s.keys()][i]] for i in range(len(s))}
             if inplace:
                 self.integral_manager = self.initialize_integral_manager(one_body_integrals=self.integral_manager.one_body_integrals,
                 two_body_integrals=self.integral_manager.two_body_integrals,constant_term=self.integral_manager.constant_term,
                  active_orbitals=[*to_active.values()],reference_orbitals=[i.idx_total for i in self.integral_manager.reference_orbitals]
                 , frozen_orbitals=core, orbital_coefficients=coeff, overlap_integrals=s)
-                self.update_select({active.index(i):self.select[i] for i in active})
+                self.update_select(new_select)
                 return self
             else:
                 integral_manager = self.initialize_integral_manager(one_body_integrals=self.integral_manager.one_body_integrals,
@@ -330,7 +335,7 @@ class QuantumChemistryHybridBase(qc_base):
                 , frozen_orbitals=core, orbital_coefficients=coeff, overlap_integrals=s)
                 parameters = copy.deepcopy(self.parameters)
                 result = QuantumChemistryHybridBase(parameters=parameters, integral_manager=integral_manager,transformation=self.transformation,
-                select={active.index(i):self.select[i] for i in active}, two_qubit=self.two_qubit, condense=self.condense
+                select=new_select, two_qubit=self.two_qubit, condense=self.condense
                                                     ,integral_tresh=self.integral_tresh,active_orbitals=[*to_active.values()])
                 return result
         # can not be an instance of a specific backend (otherwise we get inconsistencies with classical methods in the backend)
